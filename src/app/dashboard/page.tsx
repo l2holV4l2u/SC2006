@@ -11,10 +11,18 @@ import {
   SelectItem,
   SelectValue,
 } from "@/components/ui/select";
-import { Filter, SortDesc, LoaderCircle, Search } from "lucide-react";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
+import { SortDesc, LoaderCircle } from "lucide-react";
 import { DashboardNavbar } from "@/components/custom/navbar";
 import { Property } from "@/type/property";
-import { dummyProperties } from "@/lib/mock";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import {
@@ -27,16 +35,21 @@ import {
   CartesianGrid,
 } from "recharts";
 import { Input } from "@/components/ui/input";
+import { toTitleCase } from "@/lib/utils";
 
 export default function PropertyListingPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
 
+  // Data states
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [loading, setLoading] = useState(true);
+
   // Filter states
   const [askingPrice, setAskingPrice] = useState<string>("");
   const [town, setTown] = useState<string>("");
   const [flatType, setFlatType] = useState<string>("");
-  const [filtered, setFiltered] = useState<Property[]>(dummyProperties);
+  const [filtered, setFiltered] = useState<Property[]>([]);
   const [sortBy, setSortBy] = useState<string>("price-asc");
 
   // Pagination
@@ -45,15 +58,32 @@ export default function PropertyListingPage() {
   const totalPages = Math.ceil(filtered.length / itemsPerPage);
 
   useEffect(() => {
-    let results = dummyProperties.filter((p) => {
+    async function fetchProperties() {
+      setLoading(true);
+      try {
+        const res = await fetch("/api/dataset?limit=1000");
+        if (!res.ok) throw new Error("Failed to fetch properties");
+        const data: Property[] = await res.json();
+        setProperties(data);
+        setFiltered(data);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchProperties();
+  }, []);
+
+  // Apply filters & sorting when filters change
+  useEffect(() => {
+    let results = properties.filter((p) => {
       return (
-        (askingPrice === "" || p.price <= parseInt(askingPrice)) &&
         (town === "" || p.town === town) &&
         (flatType === "" || p.flatType === flatType)
       );
     });
 
-    // Sorting ...
     switch (sortBy) {
       case "price-asc":
         results.sort((a, b) => a.price - b.price);
@@ -61,25 +91,18 @@ export default function PropertyListingPage() {
       case "price-desc":
         results.sort((a, b) => b.price - a.price);
         break;
-      case "size-desc":
-        results.sort((a, b) => b.size - a.size);
-        break;
-      case "views-desc":
-        results.sort((a, b) => b.views - a.views);
-        break;
     }
 
     setFiltered(results);
-    setCurrentPage(1); // reset pagination
-  }, [askingPrice, town, flatType, sortBy]);
+    setCurrentPage(1);
+  }, [town, flatType, sortBy, properties]);
 
+  // Auth redirect
   useEffect(() => {
-    if (status === "unauthenticated") {
-      router.push("/login");
-    }
+    if (status === "unauthenticated") router.push("/login");
   }, [status, router]);
 
-  if (status === "loading") {
+  if (status === "loading" || loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="text-center space-y-4">
@@ -101,6 +124,43 @@ export default function PropertyListingPage() {
     setTown("");
     setFlatType("");
     setSortBy("price-asc");
+  };
+
+  // Helper function to generate pagination items
+  const getPaginationItems = () => {
+    const items = [];
+    const maxVisible = 5;
+
+    if (totalPages <= maxVisible) {
+      // Show all pages if total is less than max
+      for (let i = 1; i <= totalPages; i++) {
+        items.push(i);
+      }
+    } else {
+      // Always show first page
+      items.push(1);
+
+      if (currentPage > 3) {
+        items.push("ellipsis-start");
+      }
+
+      // Show pages around current page
+      const start = Math.max(2, currentPage - 1);
+      const end = Math.min(totalPages - 1, currentPage + 1);
+
+      for (let i = start; i <= end; i++) {
+        items.push(i);
+      }
+
+      if (currentPage < totalPages - 2) {
+        items.push("ellipsis-end");
+      }
+
+      // Always show last page
+      items.push(totalPages);
+    }
+
+    return items;
   };
 
   return (
@@ -129,10 +189,13 @@ export default function PropertyListingPage() {
                   <SelectValue placeholder="All Towns" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Ang Mo Kio">Ang Mo Kio</SelectItem>
-                  <SelectItem value="Bedok">Bedok</SelectItem>
-                  <SelectItem value="Bishan">Bishan</SelectItem>
-                  <SelectItem value="Clementi">Clementi</SelectItem>
+                  {Array.from(new Set(properties.map((p) => p.town))).map(
+                    (t) => (
+                      <SelectItem key={t} value={t}>
+                        {toTitleCase(t)}
+                      </SelectItem>
+                    )
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -144,10 +207,13 @@ export default function PropertyListingPage() {
                   <SelectValue placeholder="All Property Types" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="3-Room">3-Room HDB</SelectItem>
-                  <SelectItem value="4-Room">4-Room HDB</SelectItem>
-                  <SelectItem value="5-Room">5-Room HDB</SelectItem>
-                  <SelectItem value="Executive">Executive Flat</SelectItem>
+                  {Array.from(new Set(properties.map((p) => p.flatType))).map(
+                    (ft) => (
+                      <SelectItem key={ft} value={ft}>
+                        {toTitleCase(ft)}
+                      </SelectItem>
+                    )
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -161,8 +227,6 @@ export default function PropertyListingPage() {
                 <SelectContent>
                   <SelectItem value="price-asc">Price: Low to High</SelectItem>
                   <SelectItem value="price-desc">Price: High to Low</SelectItem>
-                  <SelectItem value="size-desc">Size: Largest First</SelectItem>
-                  <SelectItem value="views-desc">Most Viewed</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -173,27 +237,27 @@ export default function PropertyListingPage() {
           <div className="flex items-center justify-between">
             <div className="text-sm text-gray-600">
               Found <strong>{filtered.length}</strong> of{" "}
-              <strong>{dummyProperties.length}</strong> properties
+              <strong>{properties.length}</strong> properties
             </div>
             <Button
               variant="outline"
               size="sm"
               onClick={clearFilters}
-              disabled={town == "" && flatType == ""}
+              disabled={town == "" && flatType == "" && askingPrice === ""}
             >
               Clear All
             </Button>
           </div>
         </div>
 
-        {/* Results Grid - Analytics */}
+        {/* Results Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {pageData.map((prop, i) => (
-            <Card key={i} className="p-4 shadow-sm">
-              <h3 className="text-lg font-semibold mb-2">
-                {prop.flatType} in {prop.town}
+          {pageData.map((prop) => (
+            <Card key={prop.id} className="p-4 shadow-sm gap-2">
+              <h3 className="text-lg font-semibold">
+                {toTitleCase(prop.flatType)} in {toTitleCase(prop.town)}
               </h3>
-              <p className="text-sm text-gray-600 mb-2">
+              <p className="text-sm text-gray-600">
                 Avg Price: ${prop.price.toLocaleString()}
               </p>
               <div className="h-40">
@@ -224,40 +288,52 @@ export default function PropertyListingPage() {
           ))}
         </div>
 
-        {/* Pagination */}
-        <Card className="shadow-sm p-4">
-          <div className="flex justify-center items-center space-x-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage((p) => p - 1)}
-            >
-              « Previous
-            </Button>
+        {/* Pagination with shadcn */}
+        {totalPages > 1 && (
+          <Pagination>
+            <PaginationContent>
+              <PaginationItem>
+                <PaginationPrevious
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  className={
+                    currentPage === 1
+                      ? "pointer-events-none opacity-50"
+                      : "cursor-pointer"
+                  }
+                />
+              </PaginationItem>
 
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-              <Button
-                key={page}
-                size="sm"
-                variant={page === currentPage ? "default" : "outline"}
-                className="w-8 h-8 p-0"
-                onClick={() => setCurrentPage(page)}
-              >
-                {page}
-              </Button>
-            ))}
+              {getPaginationItems().map((item, index) => (
+                <PaginationItem key={index}>
+                  {typeof item === "number" ? (
+                    <PaginationLink
+                      onClick={() => setCurrentPage(item)}
+                      isActive={currentPage === item}
+                      className="cursor-pointer"
+                    >
+                      {item}
+                    </PaginationLink>
+                  ) : (
+                    <PaginationEllipsis />
+                  )}
+                </PaginationItem>
+              ))}
 
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={currentPage === totalPages}
-              onClick={() => setCurrentPage((p) => p + 1)}
-            >
-              Next »
-            </Button>
-          </div>
-        </Card>
+              <PaginationItem>
+                <PaginationNext
+                  onClick={() =>
+                    setCurrentPage((p) => Math.min(totalPages, p + 1))
+                  }
+                  className={
+                    currentPage === totalPages
+                      ? "pointer-events-none opacity-50"
+                      : "cursor-pointer"
+                  }
+                />
+              </PaginationItem>
+            </PaginationContent>
+          </Pagination>
+        )}
       </div>
     </div>
   );
