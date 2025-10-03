@@ -1,36 +1,21 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  ScatterChart,
-  Scatter,
-  BarChart,
-  Bar,
-} from "recharts";
 import { generateMockData, MockData } from "./mockData";
 import { PropertyHeader } from "./propertyHeader";
-import { MapView } from "./mapView";
-import { StatsSidebar } from "./statsSidebar";
-
-export type TabId = "comparison" | "history" | "scatter" | "map";
-
-interface PropertyPriceComparisonProps {
-  propertyId?: string;
-}
+import { PropertyDetail } from "./propertyDetail";
+import { PropertyTrend } from "./propertyTrend";
+import { ArrowLeft } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 export default function PropertyPriceComparison({
   propertyId = "123",
-}: PropertyPriceComparisonProps) {
+}: {
+  propertyId?: string;
+}) {
   const [data, setData] = useState<MockData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [activeTab, setActiveTab] = useState<TabId>("comparison");
+  const router = useRouter();
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -64,137 +49,21 @@ export default function PropertyPriceComparison({
     );
   }
 
-  const { currentProperty, similarProperties, priceHistory } = data;
-  const avgPrice =
-    similarProperties.reduce((sum, prop) => sum + prop.price, 0) /
-    similarProperties.length;
-  const priceVsMarket = (
-    ((currentProperty.price - avgPrice) / avgPrice) *
-    100
-  ).toFixed(1);
-
-  const tabs = [
-    { id: "comparison" as TabId, label: "Price Comparison" },
-    { id: "history" as TabId, label: "Price History" },
-    { id: "scatter" as TabId, label: "Market Analysis" },
-    { id: "map" as TabId, label: "Map View" },
-  ];
+  const { currentProperty, priceHistory } = data;
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <PropertyHeader
-          currentProperty={currentProperty}
-          priceVsMarket={priceVsMarket}
-        />
-
-        {/* Navigation Tabs */}
-        <div className="flex space-x-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                activeTab === tab.id
-                  ? "bg-white text-gray-900 shadow-sm"
-                  : "text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main Chart */}
-          <div className="lg:col-span-2 bg-white rounded-lg shadow-sm p-6">
-            {activeTab === "comparison" && (
-              <ResponsiveContainer width="100%" height={400}>
-                <BarChart data={similarProperties.slice(0, 8)}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis
-                    dataKey="address"
-                    angle={-45}
-                    textAnchor="end"
-                    height={100}
-                    fontSize={12}
-                  />
-                  <YAxis
-                    tickFormatter={(value: number) =>
-                      `$${(value / 1000).toFixed(0)}k`
-                    }
-                  />
-                  <Tooltip
-                    formatter={(value: number) => [
-                      `$${value.toLocaleString()}`,
-                      "Price",
-                    ]}
-                  />
-                  <Bar dataKey="price" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-
-            {activeTab === "history" && (
-              <ResponsiveContainer width="100%" height={400}>
-                <LineChart data={priceHistory}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
-                  <YAxis
-                    tickFormatter={(value: number) =>
-                      `$${(value / 1000).toFixed(0)}k`
-                    }
-                  />
-                  <Tooltip
-                    formatter={(value: number) => `$${value.toLocaleString()}`}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="currentProperty"
-                    stroke="#ef4444"
-                    strokeWidth={3}
-                    name="This Property"
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="marketAverage"
-                    stroke="#3b82f6"
-                    strokeWidth={2}
-                    strokeDasharray="5 5"
-                    name="Market Average"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            )}
-
-            {activeTab === "scatter" && (
-              <ResponsiveContainer width="100%" height={400}>
-                <ScatterChart data={similarProperties}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="sqft" name="Square Footage" />
-                  <YAxis dataKey="price" name="Price" />
-                  <Tooltip />
-                  <Scatter dataKey="price" fill="#3b82f6" />
-                </ScatterChart>
-              </ResponsiveContainer>
-            )}
-
-            {activeTab === "map" && (
-              <MapView
-                currentProperty={currentProperty}
-                similarProperties={similarProperties}
-              />
-            )}
-          </div>
-
-          {/* Sidebar */}
-          <StatsSidebar
-            currentProperty={currentProperty}
-            avgPrice={avgPrice}
-            similarProperties={similarProperties}
-          />
-        </div>
+      <div className="max-w-6xl mx-auto flex flex-col gap-4">
+        <button
+          onClick={() => router.push("/dashboard")}
+          className="flex items-center gap-2 text-primary font-medium hover:underline text-lg cursor-pointer"
+        >
+          <ArrowLeft size={18} strokeWidth={3} />
+          Back to Dashboard
+        </button>
+        <PropertyHeader curProp={currentProperty} />
+        <PropertyDetail curProp={currentProperty} />
+        <PropertyTrend priceHistory={priceHistory} />
       </div>
     </div>
   );

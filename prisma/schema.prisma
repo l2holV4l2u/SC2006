@@ -1,0 +1,102 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------- USERS & AUTH ----------------
+model User {
+  id            String        @id @default(uuid())
+  email         String        @unique
+  passwordHash  String
+  role          Role          @default(BUYER)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  savedSearches SavedSearch[]
+}
+
+enum Role {
+  BUYER       // Potential buyer
+  REGISTERED  // Registered user (can save searches)
+  AGENT       // Property agent (can export)
+  ADMIN
+}
+
+// ---------------- HOUSING DATA ----------------
+model Transaction {
+  id                  String   @id @default(uuid())
+  month               DateTime
+  town                String
+  flatType            String
+  flatModel           String?
+  storeyRange         String
+  floorAreaSqm        Float
+  leaseCommenceYear   Int
+  remainingLeaseYears Int
+  resalePrice         Int
+  pricePerSqm         Float
+
+  createdAt           DateTime @default(now())
+}
+
+// ---------------- SEARCH / STATE ----------------
+model SavedSearch {
+  id         String   @id @default(uuid())
+  title      String
+  filters    Json     // stores filters like {town, flatType, storeyRange, areaRange, monthRange}
+  sort       String   // e.g. "price_desc"
+  trendWindow Int     // e.g. 12, 24, 60 months
+  shortUrl   String   @unique
+
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+
+  createdAt  DateTime @default(now())
+}
+
+// ---------------- ANALYTICS ----------------
+model Aggregate {
+  id            String   @id @default(uuid())
+  month         DateTime
+  town          String
+  flatType      String
+  medianPrice   Float
+  medianPPSM    Float
+  medianLease   Float?
+
+  createdAt     DateTime @default(now())
+}
+
+model PriceFairness {
+  id            String   @id @default(uuid())
+  transactionId String   @unique
+
+  baselineScope FairnessScope
+  tag           FairnessTag
+  rationale     String
+  createdAt     DateTime @default(now())
+}
+
+enum FairnessScope {
+  TOWN
+  PLANNING_AREA
+}
+
+enum FairnessTag {
+  BELOW_TYPICAL
+  TYPICAL
+  ABOVE_TYPICAL
+}
+
+// ---------------- CACHING ----------------
+model CacheStatus {
+  id             String   @id @default(uuid())
+  lastFetchedAt  DateTime
+  source         String   // e.g., "data.gov.sg"
+  status         String   // e.g., "fresh", "stale", "failed"
+  message        String?
+}
