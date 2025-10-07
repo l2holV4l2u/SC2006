@@ -20,9 +20,9 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
-import { SortDesc, LoaderCircle } from "lucide-react";
+import { SortDesc } from "lucide-react";
 import { DashboardNavbar } from "@/components/custom/navbar";
-import { Property } from "@/type/property";
+import { Property } from "@/type";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import {
@@ -37,153 +37,149 @@ import {
 import { Input } from "@/components/ui/input";
 import { toTitleCase } from "@/lib/utils";
 
+type FairnessResponse = {
+  fair_price: number;
+  band_low: number;
+  band_high: number;
+  dev_pct: number | null;
+  label: "Fair" | "Advantageous" | "Disadvantageous" | "INSUFFICIENT_DATA";
+};
+
 export default function PropertyListingPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
 
-  // Data states
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalProperties, setTotalProperties] = useState(0);
 
-  // Filter states
   const [askingPrice, setAskingPrice] = useState<string>("");
   const [town, setTown] = useState<string>("");
   const [flatType, setFlatType] = useState<string>("");
-  const [filtered, setFiltered] = useState<Property[]>([]);
   const [sortBy, setSortBy] = useState<string>("price-asc");
 
-  // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 6;
-  const totalPages = Math.ceil(filtered.length / itemsPerPage);
 
-  useEffect(() => {
-    async function fetchProperties() {
-      setLoading(true);
-      try {
-        const res = await fetch("/api/dataset?limit=1000");
-        if (!res.ok) throw new Error("Failed to fetch properties");
-        const data: Property[] = await res.json();
-        setProperties(data);
-        setFiltered(data);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
+  // Fairness map
+  const [fairnessMap, setFairnessMap] = useState<
+    Record<string, FairnessResponse>
+  >({});
+
+  const fetchProperties = async () => {
+    setLoading(true);
+    const params = new URLSearchParams();
+    if (town) params.append("town", town);
+    if (flatType) params.append("flatType", flatType);
+    if (sortBy) params.append("sortBy", sortBy);
+    params.append("page", currentPage.toString());
+    params.append("itemsPerPage", itemsPerPage.toString());
+
+    try {
+      const res = await fetch(`/api/dataset?${params.toString()}`);
+      if (!res.ok) throw new Error("Failed to fetch data");
+      const data = await res.json();
+      setProperties(data.data);
+      setTotalPages(data.totalPages);
+      setTotalProperties(data.total);
+
+      // Fetch fairness if asking price is provided
+      if (askingPrice) {
+        const results: Record<string, FairnessResponse> = {};
+        await Promise.all(
+          data.data.map(async (prop: Property) => {
+            try {
+              const resFair = await fetch("/api/fairness", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  subject: {
+                    asking_price: parseFloat(askingPrice),
+                    town: prop.town,
+                    flat_type: prop.flatType,
+                    floor_area_sqm: prop.floor_area_sqm,
+                    remaining_lease_years: prop.remaining_lease_years,
+                    storey_range: prop.storey_range,
+                  },
+                  tier: "FREE",
+                }),
+              });
+              const fairnessData = await resFair.json();
+              results[prop.id] = fairnessData;
+            } catch (err) {
+              console.error(err);
+            }
+          })
+        );
+        setFairnessMap(results);
+      } else {
+        setFairnessMap({});
       }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
-    fetchProperties();
-  }, []);
+  };
 
-  // Apply filters & sorting when filters change
   useEffect(() => {
-    let results = properties.filter((p) => {
-      return (
-        (town === "" || p.town === town) &&
-        (flatType === "" || p.flatType === flatType)
-      );
-    });
+    fetchProperties();
+  }, [town, flatType, sortBy, currentPage, askingPrice]);
 
-    switch (sortBy) {
-      case "price-asc":
-        results.sort((a, b) => a.price - b.price);
-        break;
-      case "price-desc":
-        results.sort((a, b) => b.price - a.price);
-        break;
-    }
-
-    setFiltered(results);
-    setCurrentPage(1);
-  }, [town, flatType, sortBy, properties]);
-
-  // Auth redirect
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login");
   }, [status, router]);
 
-  if (status === "loading" || loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-center space-y-4">
-          <LoaderCircle className="animate-spin h-32 w-32 mx-auto" />
-          <div className="text-xl">Loading...</div>
-        </div>
-      </div>
-    );
-  }
-
   if (!session) return null;
-
-  // Paginated data
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const pageData = filtered.slice(startIndex, startIndex + itemsPerPage);
 
   const clearFilters = () => {
     setAskingPrice("");
     setTown("");
     setFlatType("");
     setSortBy("price-asc");
+    setCurrentPage(1);
   };
 
-  // Helper function to generate pagination items
   const getPaginationItems = () => {
     const items = [];
     const maxVisible = 5;
-
     if (totalPages <= maxVisible) {
-      // Show all pages if total is less than max
-      for (let i = 1; i <= totalPages; i++) {
-        items.push(i);
-      }
+      for (let i = 1; i <= totalPages; i++) items.push(i);
     } else {
-      // Always show first page
       items.push(1);
-
-      if (currentPage > 3) {
-        items.push("ellipsis-start");
-      }
-
-      // Show pages around current page
+      if (currentPage > 3) items.push("ellipsis-start");
       const start = Math.max(2, currentPage - 1);
       const end = Math.min(totalPages - 1, currentPage + 1);
-
-      for (let i = start; i <= end; i++) {
-        items.push(i);
-      }
-
-      if (currentPage < totalPages - 2) {
-        items.push("ellipsis-end");
-      }
-
-      // Always show last page
+      for (let i = start; i <= end; i++) items.push(i);
+      if (currentPage < totalPages - 2) items.push("ellipsis-end");
       items.push(totalPages);
     }
-
     return items;
   };
 
   return (
     <div className="min-h-screen bg-gray-50">
       <DashboardNavbar />
-
       <div className="container mx-auto px-4 py-6 space-y-6 mt-12 max-w-6xl">
-        {/* Filter & Sort */}
+        {/* Filters */}
         <div className="space-y-4">
-          <div className="flex justify-between">
-            <div className="flex items-center gap-4">
+          <div className="flex flex-wrap justify-between gap-4">
+            {/* Asking Price */}
+            <div className="flex items-center gap-2">
               <label className="font-medium text-gray-700">Asking Price</label>
               <Input
                 type="number"
-                placeholder="Enter your price"
+                placeholder="Enter price"
                 value={askingPrice}
                 onChange={(e) => setAskingPrice(e.target.value)}
                 className="w-36"
               />
             </div>
 
-            <div className="flex items-center gap-4">
-              <label className="font-medium text-gray-700">Location</label>
+            {/* Town */}
+            <div className="flex items-center gap-2">
+              <label className="font-medium text-gray-700">Town</label>
               <Select value={town} onValueChange={setTown}>
                 <SelectTrigger>
                   <SelectValue placeholder="All Towns" />
@@ -200,11 +196,12 @@ export default function PropertyListingPage() {
               </Select>
             </div>
 
-            <div className="flex gap-4 items-center">
+            {/* Flat Type */}
+            <div className="flex items-center gap-2">
               <label className="font-medium text-gray-700">Property Type</label>
               <Select value={flatType} onValueChange={setFlatType}>
                 <SelectTrigger>
-                  <SelectValue placeholder="All Property Types" />
+                  <SelectValue placeholder="All Types" />
                 </SelectTrigger>
                 <SelectContent>
                   {Array.from(new Set(properties.map((p) => p.flatType))).map(
@@ -218,7 +215,8 @@ export default function PropertyListingPage() {
               </Select>
             </div>
 
-            <div className="flex items-center space-x-2">
+            {/* Sort */}
+            <div className="flex items-center gap-2">
               <SortDesc className="h-4 w-4 text-gray-500" />
               <Select value={sortBy} onValueChange={setSortBy}>
                 <SelectTrigger className="w-48 h-8">
@@ -236,14 +234,13 @@ export default function PropertyListingPage() {
 
           <div className="flex items-center justify-between">
             <div className="text-sm text-gray-600">
-              Found <strong>{filtered.length}</strong> of{" "}
-              <strong>{properties.length}</strong> properties
+              Found <strong>{totalProperties}</strong> properties
             </div>
             <Button
               variant="outline"
               size="sm"
               onClick={clearFilters}
-              disabled={town == "" && flatType == "" && askingPrice === ""}
+              disabled={!askingPrice && !town && !flatType}
             >
               Clear All
             </Button>
@@ -251,44 +248,108 @@ export default function PropertyListingPage() {
         </div>
 
         {/* Results Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {pageData.map((prop) => (
-            <Card key={prop.id} className="p-4 shadow-sm gap-2">
-              <h3 className="text-lg font-semibold">
-                {toTitleCase(prop.flatType)} in {toTitleCase(prop.town)}
-              </h3>
-              <p className="text-sm text-gray-600">
-                Avg Price: ${prop.price.toLocaleString()}
-              </p>
-              <div className="h-40">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart
-                    data={[
-                      { month: "Jan", price: prop.price * 0.95 },
-                      { month: "Feb", price: prop.price * 0.97 },
-                      { month: "Mar", price: prop.price },
-                      { month: "Apr", price: prop.price * 1.02 },
-                      { month: "May", price: prop.price * 1.05 },
-                    ]}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis />
-                    <Tooltip />
-                    <Line
-                      type="monotone"
-                      dataKey="price"
-                      stroke="#2563eb"
-                      strokeWidth={2}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </Card>
-          ))}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 min-h-[24rem]">
+          {loading
+            ? Array.from({ length: itemsPerPage }).map((_, idx) => (
+                <div
+                  key={idx}
+                  className="p-4 shadow-sm gap-2 border border-gray-200 animate-pulse bg-gray-100 rounded"
+                >
+                  <div className="h-6 bg-gray-300 rounded w-3/4 mb-2"></div>
+                  <div className="h-4 bg-gray-300 rounded w-1/2 mb-4"></div>
+                  <div className="h-32 bg-gray-200 rounded"></div>
+                </div>
+              ))
+            : properties.map((prop) => {
+                const fairness = fairnessMap[prop.id];
+                return (
+                  <Card key={prop.id} className="p-4 shadow-sm gap-2">
+                    <h3 className="text-lg font-semibold">
+                      {toTitleCase(prop.flatType)} in {toTitleCase(prop.town)}
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      Avg Price: ${prop.price.toLocaleString()}
+                    </p>
+                    {fairness && (
+                      <p className="text-sm mt-1">
+                        Your asking price is{" "}
+                        <span className="font-semibold">{fairness.label}</span>,
+                        Fair Price: ${fairness.fair_price.toLocaleString()}
+                      </p>
+                    )}
+                    <div className="h-40">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart
+                          data={prop.trend.map((t) => ({
+                            month: t.date,
+                            price: t.avgPrice,
+                          }))}
+                          margin={{ top: 10, right: 0, left: -20, bottom: 0 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" />
+
+                          {/* Format X axis date (YYYY-MM -> "Oct 2025") */}
+                          <XAxis
+                            dataKey="month"
+                            tickFormatter={(val) => {
+                              const [year, month] = val.split("-");
+                              const date = new Date(`${year}-${month}-01`);
+                              return date.toLocaleDateString("en-US", {
+                                month: "short",
+                                year: "numeric",
+                              });
+                            }}
+                            tick={{ fontSize: 12 }}
+                          />
+
+                          {/* Format Y axis price (280000 -> 280K) */}
+                          <YAxis
+                            tickFormatter={(val) =>
+                              val >= 1_000_000
+                                ? `${(val / 1_000_000).toFixed(1)}M`
+                                : val == 0
+                                ? "0"
+                                : `${(val / 1_000).toFixed(0)}K`
+                            }
+                            tick={{ fontSize: 12 }}
+                          />
+
+                          <Tooltip
+                            formatter={(value: number) =>
+                              `$${value.toLocaleString()}`
+                            }
+                            labelFormatter={(val: string) => {
+                              const [year, month] = val.split("-");
+                              const date = new Date(`${year}-${month}-01`);
+                              return date.toLocaleDateString("en-US", {
+                                month: "long",
+                                year: "numeric",
+                              });
+                            }}
+                          />
+
+                          <Line
+                            type="monotone"
+                            dataKey="price"
+                            stroke="#2563eb"
+                            strokeWidth={2}
+                            dot={false} // hide dots
+                            activeDot={{
+                              r: 5,
+                              strokeWidth: 2,
+                              stroke: "#2563eb",
+                              fill: "#fff",
+                            }} // show on hover
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </Card>
+                );
+              })}
         </div>
 
-        {/* Pagination with shadcn */}
+        {/* Pagination */}
         {totalPages > 1 && (
           <Pagination>
             <PaginationContent>
@@ -303,8 +364,8 @@ export default function PropertyListingPage() {
                 />
               </PaginationItem>
 
-              {getPaginationItems().map((item, index) => (
-                <PaginationItem key={index}>
+              {getPaginationItems().map((item, idx) => (
+                <PaginationItem key={idx}>
                   {typeof item === "number" ? (
                     <PaginationLink
                       onClick={() => setCurrentPage(item)}
