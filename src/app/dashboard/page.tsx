@@ -20,9 +20,9 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
-import { SortDesc } from "lucide-react";
+import { SortDesc, TrendingDown, TrendingUp, Minus } from "lucide-react";
 import { DashboardNavbar } from "@/components/custom/navbar";
-import { Property } from "@/type";
+import { Property, FairnessOutput } from "@/type";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import {
@@ -36,14 +36,6 @@ import {
 } from "recharts";
 import { Input } from "@/components/ui/input";
 import { toTitleCase } from "@/lib/utils";
-
-type FairnessResponse = {
-  fair_price: number;
-  band_low: number;
-  band_high: number;
-  dev_pct: number | null;
-  label: "Fair" | "Advantageous" | "Disadvantageous" | "INSUFFICIENT_DATA";
-};
 
 export default function PropertyListingPage() {
   const { data: session, status } = useSession();
@@ -62,10 +54,26 @@ export default function PropertyListingPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 6;
 
-  // Fairness map
   const [fairnessMap, setFairnessMap] = useState<
-    Record<string, FairnessResponse>
+    Record<string, FairnessOutput>
   >({});
+  const [dataset, setDataset] = useState<any[]>([]);
+
+  // Fetch full dataset for fairness calculations
+  useEffect(() => {
+    const fetchDataset = async () => {
+      try {
+        const res = await fetch("/api/dataset?all=true");
+        if (res.ok) {
+          const data = await res.json();
+          setDataset(data.data || []);
+        }
+      } catch (err) {
+        console.error("Failed to fetch dataset:", err);
+      }
+    };
+    fetchDataset();
+  }, []);
 
   const fetchProperties = async () => {
     setLoading(true);
@@ -85,8 +93,8 @@ export default function PropertyListingPage() {
       setTotalProperties(data.total);
 
       // Fetch fairness if asking price is provided
-      if (askingPrice) {
-        const results: Record<string, FairnessResponse> = {};
+      if (askingPrice && parseFloat(askingPrice) > 0) {
+        const results: Record<string, FairnessOutput> = {};
         await Promise.all(
           data.data.map(async (prop: Property) => {
             try {
@@ -100,15 +108,19 @@ export default function PropertyListingPage() {
                     flat_type: prop.flatType,
                     floor_area_sqm: prop.floor_area_sqm,
                     remaining_lease_years: prop.remaining_lease_years,
-                    storey_range: prop.storey_range,
+                    storey_range: prop.storey_range || "",
                   },
-                  tier: "FREE",
+                  dataset: dataset,
+                  coeffs: {
+                    beta_lease: 0.02,
+                    gamma_logarea: 0.5,
+                  },
                 }),
               });
               const fairnessData = await resFair.json();
               results[prop.id] = fairnessData;
             } catch (err) {
-              console.error(err);
+              console.error("Fairness API error:", err);
             }
           })
         );
@@ -124,8 +136,10 @@ export default function PropertyListingPage() {
   };
 
   useEffect(() => {
-    fetchProperties();
-  }, [town, flatType, sortBy, currentPage, askingPrice]);
+    if (dataset.length > 0) {
+      fetchProperties();
+    }
+  }, [town, flatType, sortBy, currentPage, askingPrice, dataset]);
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login");
@@ -156,6 +170,51 @@ export default function PropertyListingPage() {
       items.push(totalPages);
     }
     return items;
+  };
+
+  const getFairnessColor = (label: FairnessOutput["label"]) => {
+    switch (label) {
+      case "Advantageous":
+        return "bg-green-50 border-green-200";
+      case "Fair":
+        return "bg-blue-50 border-blue-200";
+      case "Disadvantageous":
+        return "bg-red-50 border-red-200";
+      default:
+        return "bg-gray-50 border-gray-200";
+    }
+  };
+
+  const getFairnessBadge = (label: FairnessOutput["label"]) => {
+    switch (label) {
+      case "Advantageous":
+        return (
+          <div className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-semibold">
+            <TrendingDown className="h-3 w-3" />
+            Advantageous
+          </div>
+        );
+      case "Fair":
+        return (
+          <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-semibold">
+            <Minus className="h-3 w-3" />
+            Fair Price
+          </div>
+        );
+      case "Disadvantageous":
+        return (
+          <div className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-800 rounded-full text-xs font-semibold">
+            <TrendingUp className="h-3 w-3" />
+            Disadvantageous
+          </div>
+        );
+      default:
+        return (
+          <div className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-800 rounded-full text-xs font-semibold">
+            Insufficient Data
+          </div>
+        );
+    }
   };
 
   return (
@@ -262,21 +321,54 @@ export default function PropertyListingPage() {
               ))
             : properties.map((prop) => {
                 const fairness = fairnessMap[prop.id];
+                const cardColor = fairness
+                  ? getFairnessColor(fairness.label)
+                  : "bg-white border-gray-200";
+
                 return (
-                  <Card key={prop.id} className="p-4 shadow-sm gap-2">
-                    <h3 className="text-lg font-semibold">
-                      {toTitleCase(prop.flatType)} in {toTitleCase(prop.town)}
-                    </h3>
-                    <p className="text-sm text-gray-600">
-                      Avg Price: ${prop.price.toLocaleString()}
-                    </p>
-                    {fairness && (
-                      <p className="text-sm mt-1">
-                        Your asking price is{" "}
-                        <span className="font-semibold">{fairness.label}</span>,
-                        Fair Price: ${fairness.fair_price.toLocaleString()}
-                      </p>
+                  <Card
+                    key={prop.id}
+                    className={`p-4 shadow-sm transition-all ${cardColor}`}
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <h3 className="text-lg font-semibold">
+                          {toTitleCase(prop.flatType)} in{" "}
+                          {toTitleCase(prop.town)}
+                        </h3>
+                        <p className="text-sm text-gray-600">
+                          Avg Price: ${prop.price.toLocaleString()}
+                        </p>
+                      </div>
+                      {fairness && getFairnessBadge(fairness.label)}
+                    </div>
+
+                    {fairness && fairness.label !== "INSUFFICIENT_DATA" && (
+                      <div className="mb-3 p-2 bg-white/60 rounded border border-gray-200">
+                        <div className="text-xs text-gray-600 mb-1">
+                          Price Analysis
+                        </div>
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="font-medium">Fair Price:</span>
+                          <span className="font-bold">
+                            ${fairness.fair_price.toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center text-xs text-gray-500 mt-1">
+                          <span>Range:</span>
+                          <span>
+                            ${fairness.band_low.toLocaleString()} - $
+                            {fairness.band_high.toLocaleString()}
+                          </span>
+                        </div>
+                        {fairness.dev_pct !== null && (
+                          <div className="text-xs text-gray-600 mt-1">
+                            Deviation: {(fairness.dev_pct * 100).toFixed(1)}%
+                          </div>
+                        )}
+                      </div>
                     )}
+
                     <div className="h-40">
                       <ResponsiveContainer width="100%" height="100%">
                         <LineChart
@@ -287,8 +379,6 @@ export default function PropertyListingPage() {
                           margin={{ top: 10, right: 0, left: -20, bottom: 0 }}
                         >
                           <CartesianGrid strokeDasharray="3 3" />
-
-                          {/* Format X axis date (YYYY-MM -> "Oct 2025") */}
                           <XAxis
                             dataKey="month"
                             tickFormatter={(val) => {
@@ -301,8 +391,6 @@ export default function PropertyListingPage() {
                             }}
                             tick={{ fontSize: 12 }}
                           />
-
-                          {/* Format Y axis price (280000 -> 280K) */}
                           <YAxis
                             tickFormatter={(val) =>
                               val >= 1_000_000
@@ -313,7 +401,6 @@ export default function PropertyListingPage() {
                             }
                             tick={{ fontSize: 12 }}
                           />
-
                           <Tooltip
                             formatter={(value: number) =>
                               `$${value.toLocaleString()}`
@@ -327,19 +414,18 @@ export default function PropertyListingPage() {
                               });
                             }}
                           />
-
                           <Line
                             type="monotone"
                             dataKey="price"
                             stroke="#2563eb"
                             strokeWidth={2}
-                            dot={false} // hide dots
+                            dot={false}
                             activeDot={{
                               r: 5,
                               strokeWidth: 2,
                               stroke: "#2563eb",
                               fill: "#fff",
-                            }} // show on hover
+                            }}
                           />
                         </LineChart>
                       </ResponsiveContainer>
