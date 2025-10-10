@@ -1,14 +1,38 @@
+export type PropertyTrend = {
+  date: string; // YYYY-MM
+  // Individual data points
+  prices: number[];
+  floor_areas: number[];
+  storey_ranges: string[];
+  // Aggregated values for display
+  avgPrice: number;
+  floor_area_sqm: number;
+  storey_range: string;
+};
+
 export type Property = {
   id: number;
   title: string;
   town: string;
   flatType: string;
-  price: number;
   date: string;
-  trend: { date: string; avgPrice: number }[];
+  price: number;
   floor_area_sqm: number;
-  remaining_lease_years: number;
-  storey_range?: string;
+  storey_range: string;
+  trend: PropertyTrend[];
+};
+
+export type Filters = {
+  askingPrice: string;
+  town: string;
+  flatType: string;
+  sortBy: string;
+  monthFrom: string;
+  monthTo: string;
+  minArea: string;
+  maxArea: string;
+  minStorey: string;
+  maxStorey: string;
 };
 
 export type SubjectInput = {
