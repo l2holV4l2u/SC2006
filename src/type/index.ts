@@ -7,6 +7,7 @@ export type PropertyTrend = {
   // Aggregated values for display
   avgPrice: number;
   floor_area_sqm: number;
+  remaining_lease_years: string;
   storey_range: string;
 };
 
@@ -19,11 +20,11 @@ export type Property = {
   price: number;
   floor_area_sqm: number;
   storey_range: string;
+  remaining_lease_years: string;
   trend: PropertyTrend[];
 };
 
 export type Filters = {
-  askingPrice: string;
   town: string;
   flatType: string;
   sortBy: string;

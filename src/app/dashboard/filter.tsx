@@ -12,7 +12,9 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
-import { ChevronDown, ChevronUp, Search, X, Filter } from "lucide-react";
+import { ChevronDown, ChevronUp, Search, X, Filter, Scale } from "lucide-react";
+import { useAtom } from "jotai";
+import { askingPriceAtom } from "@/lib/propertyAtom";
 
 export function FilterSection({
   filters,
@@ -20,7 +22,9 @@ export function FilterSection({
   total,
   loading,
   onFilter,
+  onAnalyzeFairness,
 }: any) {
+  const [askingPrice, setAskingPrice] = useAtom(askingPriceAtom);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // local states for advanced filters
@@ -34,7 +38,6 @@ export function FilterSection({
   const [maxStorey, setMaxStorey] = useState(30);
   const clearFilters = () => {
     setFilters({
-      askingPrice: "",
       town: "",
       flatType: "",
       sortBy: "price-asc",
@@ -124,8 +127,8 @@ export function FilterSection({
           <Input
             type="number"
             placeholder="Enter max price"
-            value={filters.askingPrice}
-            onChange={(e) => handleChange("askingPrice", e.target.value)}
+            value={askingPrice}
+            onChange={(e) => setAskingPrice(e.target.value)}
             className="w-full"
           />
         </div>
@@ -214,6 +217,15 @@ export function FilterSection({
 
         {/* Filter Button */}
         <div className="flex gap-2 ">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => onAnalyzeFairness?.(filters)}
+            disabled={loading}
+          >
+            <Scale size={16} />
+            Analyze Fairness
+          </Button>
           <Button
             variant="highlight"
             size="sm"

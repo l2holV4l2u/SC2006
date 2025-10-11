@@ -1,165 +1,7 @@
 import { parse, isAfter, isBefore } from "date-fns";
 import { NextResponse } from "next/server";
 import { Property } from "@/type";
-
-const DATASET_ID = "d_8b84c4ee58e3cfc0ece0d773c8ca6abc";
-const BASE_URL = "https://data.gov.sg/api/action/datastore_search";
-
-// ---- In-memory cache ----
-let cacheMap: Record<string, Property[]> = {}; // key = "town|flatType"
-let lastFetched = 0;
-const CACHE_TTL = 24 * 60 * 60 * 1000; // 1 day
-
-// ---- Fetch all pages ----
-async function fetchAllRecords() {
-  const pageSize = 5000;
-  const allRecords: any[] = [];
-  const requests: Promise<void>[] = [];
-  const totalPagesEstimate = 50;
-
-  for (let i = 0; i < totalPagesEstimate; i++) {
-    const currentOffset = i * pageSize;
-    const url = `${BASE_URL}?resource_id=${DATASET_ID}&limit=${pageSize}&offset=${currentOffset}`;
-
-    const req = fetch(url)
-      .then((res) => res.json())
-      .then((data) => {
-        const records = data.result.records;
-        if (records && records.length > 0) {
-          allRecords.push(...records);
-        }
-      })
-      .catch((err) => {
-        console.error(`Failed to fetch offset ${currentOffset}:`, err);
-      });
-
-    requests.push(req);
-  }
-
-  await Promise.all(requests);
-  console.log(`Fetched total ${allRecords.length} records.`);
-  return allRecords;
-}
-
-// ---- Build cache map with individual data points ----
-async function buildCache() {
-  const allRecords = await fetchAllRecords();
-  const grouped: Record<
-    string,
-    Record<
-      string,
-      {
-        prices: number[];
-        floorAreas: number[];
-        storeyRanges: string[];
-      }
-    >
-  > = {};
-
-  for (const r of allRecords) {
-    const town = r.town?.trim();
-    const flatType = r.flat_type?.trim();
-    const month = r.month;
-    const price = parseFloat(r.resale_price);
-    const floor_area_sqm = parseFloat(r.floor_area_sqm);
-    const storey_range = r.storey_range?.trim();
-
-    if (!town || !flatType || !month || isNaN(price)) continue;
-
-    const key = `${town.toLowerCase()}|${flatType.toLowerCase()}`;
-    if (!grouped[key]) grouped[key] = {};
-    if (!grouped[key][month])
-      grouped[key][month] = {
-        prices: [],
-        floorAreas: [],
-        storeyRanges: [],
-      };
-
-    grouped[key][month].prices.push(price);
-    grouped[key][month].floorAreas.push(floor_area_sqm || 0);
-    if (storey_range) {
-      grouped[key][month].storeyRanges.push(storey_range);
-    }
-  }
-
-  // Build Property arrays
-  cacheMap = {};
-  let idCounter = 0;
-
-  for (const [key, monthData] of Object.entries(grouped)) {
-    const [town, flatType] = key.split("|");
-
-    const trend = Object.entries(monthData)
-      .sort(([aMonth], [bMonth]) => aMonth.localeCompare(bMonth))
-      .map(([month, data]) => ({
-        date: month,
-        prices: data.prices,
-        floor_areas: data.floorAreas,
-        storey_ranges: data.storeyRanges,
-        // Keep averages for backward compatibility
-        avgPrice: Number(
-          (data.prices.reduce((a, b) => a + b, 0) / data.prices.length).toFixed(
-            2
-          )
-        ),
-        floor_area_sqm: Number(
-          (
-            data.floorAreas.reduce((a, b) => a + b, 0) / data.floorAreas.length
-          ).toFixed(2)
-        ),
-        storey_range: getMostCommonStoreyRange(data.storeyRanges),
-      }));
-
-    const latestMonth = trend[trend.length - 1];
-
-    cacheMap[key] = [
-      {
-        id: idCounter++,
-        title: `${flatType} in ${town}`,
-        town,
-        flatType,
-        date: latestMonth.date,
-        price: latestMonth.avgPrice,
-        trend,
-        floor_area_sqm: latestMonth.floor_area_sqm,
-        storey_range: latestMonth.storey_range,
-      },
-    ];
-  }
-
-  lastFetched = Date.now();
-  console.log("Cache built with", Object.keys(cacheMap).length, "keys");
-}
-
-// Helper to get most common storey range from an array
-function getMostCommonStoreyRange(storeyRanges: string[]): string {
-  if (storeyRanges.length === 0) return "";
-
-  const counts: Record<string, number> = {};
-  for (const range of storeyRanges) {
-    counts[range] = (counts[range] || 0) + 1;
-  }
-
-  let maxCount = 0;
-  let mostCommon = storeyRanges[0];
-  for (const [range, count] of Object.entries(counts)) {
-    if (count > maxCount) {
-      maxCount = count;
-      mostCommon = range;
-    }
-  }
-
-  return mostCommon;
-}
-
-// ---- Get cached data ----
-async function getCache() {
-  if (!Object.keys(cacheMap).length || Date.now() - lastFetched > CACHE_TTL) {
-    console.log("Rebuilding cache...");
-    await buildCache();
-  }
-  return cacheMap;
-}
+import { getCache, parseRemainingLease } from "@/lib/dataset";
 
 // Helper to parse storey range and get midpoint
 function getStoreyMidpoint(storeyRange: string): number {
@@ -197,15 +39,24 @@ export async function GET(req: Request) {
     const flatTypeFilter = searchParams.get("flatType")?.toLowerCase();
     const sortBy = searchParams.get("sortBy") || "price-asc";
     const page = parseInt(searchParams.get("page") || "1");
-    const itemsPerPage = parseInt(searchParams.get("itemsPerPage") || "6");
+    const itemsPerPage = parseInt(searchParams.get("itemsPerPage") || "9");
 
     // Advanced filters
     const monthFrom = searchParams.get("monthFrom"); // YYYY-MM
     const monthTo = searchParams.get("monthTo"); // YYYY-MM
-    const minArea = parseFloat(searchParams.get("minArea") || "0");
-    const maxArea = parseFloat(searchParams.get("maxArea") || "0");
-    const minStorey = parseInt(searchParams.get("minStorey") || "0");
-    const maxStorey = parseInt(searchParams.get("maxStorey") || "0");
+    const minArea = searchParams.get("minArea")
+      ? parseFloat(searchParams.get("minArea")!)
+      : null;
+    const maxArea = searchParams.get("maxArea")
+      ? parseFloat(searchParams.get("maxArea")!)
+      : null;
+    const minStorey = searchParams.get("minStorey")
+      ? parseInt(searchParams.get("minStorey")!)
+      : null;
+    const maxStorey = searchParams.get("maxStorey")
+      ? parseInt(searchParams.get("maxStorey")!)
+      : null;
+
     // Special flag to return all data for fairness calculations
     const returnAll = searchParams.get("all") === "true";
     const cache = await getCache();
@@ -237,7 +88,6 @@ export async function GET(req: Request) {
               maxStorey !== null
             ) {
               const filteredIndices: number[] = [];
-
               t.floor_areas?.forEach((area, idx) => {
                 const storeyRange = t.storey_ranges?.[idx];
                 const areaMatch =
@@ -252,6 +102,9 @@ export async function GET(req: Request) {
               });
 
               if (filteredIndices.length === 0) return null;
+
+              // Calculate average remaining lease years from filtered indices
+              // Note: We don't have individual lease years in the trend, so we keep the aggregate
 
               // Return filtered trend data
               return {
@@ -279,6 +132,7 @@ export async function GET(req: Request) {
           date: latestTrend.date,
           floor_area_sqm: latestTrend.floor_area_sqm,
           storey_range: latestTrend.storey_range,
+          remaining_lease_years: latestTrend.remaining_lease_years,
           trend: trendsInRange,
         });
       }
@@ -296,6 +150,18 @@ export async function GET(req: Request) {
       filtered.sort((a, b) => a.date.localeCompare(b.date));
     else if (sortBy === "date-desc")
       filtered.sort((a, b) => b.date.localeCompare(a.date));
+    else if (sortBy === "lease-asc")
+      filtered.sort((a, b) => {
+        const aYears = parseRemainingLease(a.remaining_lease_years);
+        const bYears = parseRemainingLease(b.remaining_lease_years);
+        return aYears - bYears;
+      });
+    else if (sortBy === "lease-desc")
+      filtered.sort((a, b) => {
+        const aYears = parseRemainingLease(a.remaining_lease_years);
+        const bYears = parseRemainingLease(b.remaining_lease_years);
+        return bYears - aYears;
+      });
 
     // If requesting all data (for fairness calculations)
     if (returnAll) {
