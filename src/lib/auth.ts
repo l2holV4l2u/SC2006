@@ -20,21 +20,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           where: { email: user.email! },
         });
 
-        // If not, create a new one
+        // If not, create a new one and redirect to subscription
         if (!existingUser) {
           await prisma.user.create({
             data: {
               email: user.email!,
               name: user.name ?? "",
               image: user.image ?? "",
-              renewSubscription: new Date(), // default to now or custom logic
+              renewSubscription: new Date(), // default to now
             },
           });
-          // Redirect to subscription page for new users
-          return "/subscription";
         }
 
-        // Existing user → proceed normally
         return true;
       } catch (err) {
         console.error("Sign-in error:", err);

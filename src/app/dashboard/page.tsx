@@ -1,9 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { DashboardNavbar } from "@/components/custom/navbar";
-import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
 import { Property, FairnessOutput, Filters, Coeffs } from "@/type";
 import { FilterSection } from "./filter";
 import { PropertyCard } from "./propertyCard";
@@ -11,15 +9,12 @@ import { PaginationControl } from "./paginationControl";
 import { getDefaultStore } from "jotai";
 import { askingPriceAtom } from "@/lib/propertyAtom";
 
-// Default hedonic coefficients - adjust based on your model
 const DEFAULT_COEFFS: Coeffs = {
   beta_lease: 0.015, // Impact of remaining lease
   gamma_logarea: -0.15, // Impact of floor area (log scale)
 };
 
 export default function PropertyListingPage() {
-  const { data: session, status } = useSession();
-  const router = useRouter();
   const store = getDefaultStore();
 
   const [properties, setProperties] = useState<Property[]>([]);
@@ -35,7 +30,7 @@ export default function PropertyListingPage() {
   });
   const itemsPerPage = 9;
 
-  // filters state
+  // Filters
   const [filters, setFilters] = useState<Filters>({
     town: "",
     flatType: "",
@@ -47,11 +42,6 @@ export default function PropertyListingPage() {
     minStorey: "",
     maxStorey: "",
   });
-
-  // Redirect unauthenticated users
-  useEffect(() => {
-    if (status === "unauthenticated") router.push("/login");
-  }, [status, router]);
 
   // Fetch properties when filters or pagination change
   useEffect(() => {
@@ -84,7 +74,7 @@ export default function PropertyListingPage() {
     }
   };
 
-  // Helper to parse remaining lease string to years
+  // Helper: parse remaining lease to years
   const parseRemainingLease = (leaseStr: string): number => {
     if (!leaseStr) return 0;
     const yearsMatch = leaseStr.match(/(\d+)\s*years?/i);
@@ -124,7 +114,6 @@ export default function PropertyListingPage() {
             if (response.ok) {
               const result: FairnessOutput = await response.json();
               newFairnessMap[property.id] = result;
-              console.log(result);
             } else {
               console.error(
                 `Fairness analysis failed for property ${property.id}`
@@ -143,8 +132,6 @@ export default function PropertyListingPage() {
       setAnalyzingFairness(false);
     }
   };
-
-  if (!session) return null;
 
   return (
     <div className="min-h-screen bg-gray-50">
