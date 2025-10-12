@@ -9,8 +9,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Settings, User, LogOut, Heart, TrendingUp } from "lucide-react";
-import { signOut } from "next-auth/react";
+import {
+  Settings,
+  User,
+  LogOut,
+  Heart,
+  TrendingUp,
+  CreditCard,
+} from "lucide-react";
+import { signOut, useSession } from "next-auth/react";
 
 export function Navbar() {
   return (
@@ -43,6 +50,14 @@ export function Navbar() {
 }
 
 export function DashboardNavbar() {
+  const { data: session } = useSession();
+
+  const user = session?.user;
+  const userName = user?.name ?? "User";
+  const userImage = user?.image ?? "https://i.pravatar.cc/32";
+
+  console.log(userImage);
+
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-white shadow-sm border-b border-gray-200 w-full">
       <nav className="container flex items-center justify-between py-3 px-6 mx-auto max-w-6xl justify-self-center">
@@ -84,47 +99,61 @@ export function DashboardNavbar() {
         </div>
 
         {/* User Menu */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="flex items-center space-x-2 px-0"
-            >
-              <Avatar className="h-8 w-8">
-                <AvatarImage src="https://i.pravatar.cc/32?img=11" alt="User" />
-                <AvatarFallback>JD</AvatarFallback>
-              </Avatar>
-              <span className="hidden md:inline text-sm text-gray-700">
-                John Doe
-              </span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>My Account</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <User className="mr-2 h-4 w-4" />
-              Profile
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <Settings className="mr-2 h-4 w-4" />
-              Settings
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <Heart className="mr-2 h-4 w-4" />
-              Saved Properties
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              className="text-red-600 cursor-pointer"
-              onClick={() => signOut({ callbackUrl: "/login" })}
-            >
-              <LogOut className="mr-2 h-4 w-4" />
-              Sign Out
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {session ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="flex items-center space-x-2 px-0"
+              >
+                <Avatar className="h-8 w-8">
+                  <AvatarImage src={userImage} alt={userName} />
+                  <AvatarFallback>
+                    {userName.charAt(0).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="hidden md:inline text-sm text-gray-700">
+                  {userName.split(" ")[0]}
+                </span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>Account</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+
+              <DropdownMenuItem asChild>
+                <Link href="/subscription" className="flex items-center w-full">
+                  <CreditCard className="mr-2 h-4 w-4" />
+                  Subscription
+                </Link>
+              </DropdownMenuItem>
+
+              <DropdownMenuItem asChild>
+                <Link
+                  href="/saved-filters"
+                  className="flex items-center w-full"
+                >
+                  <Heart className="mr-2 h-4 w-4" />
+                  Saved Filters
+                </Link>
+              </DropdownMenuItem>
+
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => signOut({ callbackUrl: "/login" })}
+                className="text-red-600 cursor-pointer"
+              >
+                <LogOut className="mr-2 h-4 w-4" />
+                Sign Out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <Link href="/login">
+            <Button variant="highlight">Login</Button>
+          </Link>
+        )}
 
         {/* Mobile Menu Button */}
         <Button variant="ghost" size="sm" className="md:hidden">

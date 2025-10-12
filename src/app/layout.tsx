@@ -1,5 +1,6 @@
 import AuthProvider from "@/providers/sessionProvider";
 import "./globals.css";
+import { Toaster } from "@/components/ui/sonner";
 
 export const metadata = {
   title: "Housing Resale Pricing Viewer",
@@ -18,7 +19,10 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <AuthProvider>
-          <main>{children}</main>
+          <main>
+            <Toaster />
+            {children}
+          </main>
         </AuthProvider>
       </body>
     </html>
