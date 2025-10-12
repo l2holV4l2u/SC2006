@@ -1,7 +1,16 @@
 import { withAuth } from "next-auth/middleware";
 
-export default withAuth(function middleware() {}, {
+export default withAuth({
   callbacks: {
-    authorized: ({ token }) => !!token,
+    authorized: ({ token }) => {
+      return !!token;
+    },
+  },
+  pages: {
+    signIn: "/login",
   },
 });
+
+export const config = {
+  matcher: ["/dashboard/:path*", "/profile/:path*", "/subscription"],
+};

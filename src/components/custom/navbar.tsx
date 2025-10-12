@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -10,15 +9,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Bell,
-  Settings,
-  User,
-  LogOut,
-  Heart,
-  Search,
-  TrendingUp,
-} from "lucide-react";
+import { Settings, User, LogOut, Heart, TrendingUp } from "lucide-react";
+import { signOut } from "next-auth/react";
 
 export function Navbar() {
   return (
@@ -124,14 +116,17 @@ export function DashboardNavbar() {
               Saved Properties
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-red-600">
+            <DropdownMenuItem
+              className="text-red-600 cursor-pointer"
+              onClick={() => signOut({ callbackUrl: "/login" })}
+            >
               <LogOut className="mr-2 h-4 w-4" />
               Sign Out
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* Mobile Menu Button (for responsive) */}
+        {/* Mobile Menu Button */}
         <Button variant="ghost" size="sm" className="md:hidden">
           <svg
             className="h-5 w-5"

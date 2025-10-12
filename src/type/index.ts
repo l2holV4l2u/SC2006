@@ -1,3 +1,5 @@
+import { DefaultSession } from "next-auth";
+
 export type PropertyTrend = {
   date: string; // YYYY-MM
   // Individual data points
@@ -71,3 +73,27 @@ export type FairnessOutput = {
   label: "Fair" | "Advantageous" | "Disadvantageous" | "INSUFFICIENT_DATA";
   comps: Comparable[];
 };
+
+declare module "next-auth" {
+  interface Session {
+    user: {
+      id: string;
+      role: "STANDARD" | "PREMIUM";
+      renewSubscription: string;
+    } & DefaultSession["user"];
+  }
+
+  interface User {
+    id: string;
+    role: "STANDARD" | "PREMIUM";
+    renewSubscription: string;
+  }
+}
+
+declare module "next-auth/jwt" {
+  interface JWT {
+    sub: string;
+    role: "STANDARD" | "PREMIUM";
+    renewSubscription: string;
+  }
+}
