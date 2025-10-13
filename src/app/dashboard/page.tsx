@@ -1,21 +1,22 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useAtom, useAtomValue } from "jotai";
 import { DashboardNavbar } from "@/components/custom/navbar";
-import { Property, FairnessOutput, Filters, Coeffs } from "@/type";
+import { Property, FairnessOutput, Coeffs } from "@/type";
 import { FilterSection } from "./filter";
 import { PropertyCard } from "./propertyCard";
 import { PaginationControl } from "./paginationControl";
-import { getDefaultStore } from "jotai";
-import { askingPriceAtom } from "@/lib/propertyAtom";
+import { filtersAtom, askingPriceAtom } from "@/lib/propertyAtom";
 
 const DEFAULT_COEFFS: Coeffs = {
-  beta_lease: 0.015, // Impact of remaining lease
-  gamma_logarea: -0.15, // Impact of floor area (log scale)
+  beta_lease: 0.015,
+  gamma_logarea: -0.15,
 };
 
 export default function PropertyListingPage() {
-  const store = getDefaultStore();
+  const filters = useAtomValue(filtersAtom);
+  const [askingPrice] = useAtom(askingPriceAtom);
 
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
@@ -30,29 +31,18 @@ export default function PropertyListingPage() {
   });
   const itemsPerPage = 9;
 
-  // Filters
-  const [filters, setFilters] = useState<Filters>({
-    town: "",
-    flatType: "",
-    sortBy: "price-asc",
-    monthFrom: "",
-    monthTo: "",
-    minArea: "",
-    maxArea: "",
-    minStorey: "",
-    maxStorey: "",
-  });
-
-  // Fetch properties when filters or pagination change
+  // Fetch properties whenever filters or pagination change
   useEffect(() => {
     fetchProperties(filters);
-  }, [pagination.page]);
+  }, [filters, pagination.page]);
 
-  const fetchProperties = async (filters: Filters) => {
+  const fetchProperties = async (currentFilters: typeof filters) => {
     setLoading(true);
     try {
       const params = new URLSearchParams({
-        ...Object.fromEntries(Object.entries(filters).filter(([_, v]) => v)),
+        ...Object.fromEntries(
+          Object.entries(currentFilters).filter(([_, v]) => v)
+        ),
         page: pagination.page.toString(),
         itemsPerPage: itemsPerPage.toString(),
       });
@@ -74,7 +64,6 @@ export default function PropertyListingPage() {
     }
   };
 
-  // Helper: parse remaining lease to years
   const parseRemainingLease = (leaseStr: string): number => {
     if (!leaseStr) return 0;
     const yearsMatch = leaseStr.match(/(\d+)\s*years?/i);
@@ -87,7 +76,7 @@ export default function PropertyListingPage() {
   const handleAnalyzeFairness = async () => {
     setAnalyzingFairness(true);
     const newFairnessMap: Record<string, FairnessOutput> = {};
-    const askingPrice = store.get(askingPriceAtom);
+
     try {
       await Promise.all(
         properties.map(async (property) => {
@@ -133,17 +122,24 @@ export default function PropertyListingPage() {
     }
   };
 
+  useEffect(() => {
+    if (!askingPrice) return;
+
+    const timeout = setTimeout(() => {
+      handleAnalyzeFairness();
+    }, 2000); // wait 2 seconds after last change
+
+    return () => clearTimeout(timeout); // cleanup if askingPrice changes again
+  }, [askingPrice]);
+
   return (
     <div className="min-h-screen bg-gray-50">
       <DashboardNavbar />
       <div className="container mx-auto px-4 py-6 space-y-6 mt-12 max-w-6xl">
         <FilterSection
-          filters={filters}
-          setFilters={setFilters}
           total={pagination.total}
           loading={loading}
           onFilter={fetchProperties}
-          onAnalyzeFairness={handleAnalyzeFairness}
         />
 
         {analyzingFairness && (

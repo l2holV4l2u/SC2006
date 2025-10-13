@@ -26,18 +26,6 @@ export type Property = {
   trend: PropertyTrend[];
 };
 
-export type Filters = {
-  town: string;
-  flatType: string;
-  sortBy: string;
-  monthFrom: string;
-  monthTo: string;
-  minArea: string;
-  maxArea: string;
-  minStorey: string;
-  maxStorey: string;
-};
-
 export type SubjectInput = {
   asking_price: number | string;
   town: string;
@@ -97,3 +85,23 @@ declare module "next-auth/jwt" {
     renewSubscription: string;
   }
 }
+
+export type Filters = {
+  town: string;
+  flatType: string;
+  sortBy: string;
+  monthFrom: string;
+  monthTo: string;
+  minArea: string;
+  maxArea: string;
+  minStorey: string;
+  maxStorey: string;
+  askingPrice: string;
+};
+
+export type SavedFilter = {
+  id: string;
+  name: string;
+  filters: Filters;
+  createdAt: string;
+};
