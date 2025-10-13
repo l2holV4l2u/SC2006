@@ -90,13 +90,14 @@ export type Filters = {
   town: string;
   flatType: string;
   sortBy: string;
+  yearFrom: string;
+  yearTo: string;
   monthFrom: string;
   monthTo: string;
   minArea: string;
   maxArea: string;
   minStorey: string;
   maxStorey: string;
-  askingPrice: string;
 };
 
 export type SavedFilter = {

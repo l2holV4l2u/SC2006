@@ -32,7 +32,7 @@ import {
 } from "@/components/ui/dialog";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { useAtom } from "jotai";
+import { useAtom, useSetAtom } from "jotai";
 import { filtersAtom, savedFiltersAtom } from "@/lib/propertyAtom";
 import { toast } from "sonner";
 
@@ -68,7 +68,7 @@ export function Navbar() {
 
 export function DashboardNavbar() {
   const { data: session } = useSession();
-  const [filters, setFilters] = useAtom(filtersAtom);
+  const setFilters = useSetAtom(filtersAtom);
   const [savedFilters, setSavedFilters] = useAtom(savedFiltersAtom);
   const [openSavedFilters, setOpenSavedFilters] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);

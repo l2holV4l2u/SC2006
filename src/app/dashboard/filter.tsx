@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -12,7 +12,16 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
-import { ChevronDown, ChevronUp, Search, X, Filter, Save } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  Search,
+  X,
+  Filter,
+  Save,
+  Loader2,
+  ArrowUpRight,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -21,125 +30,71 @@ import {
   DialogFooter,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { useAtom, useSetAtom } from "jotai";
-import { filtersAtom, savedFiltersAtom } from "@/lib/propertyAtom";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import {
+  defaultFilters,
+  fairnessMapAtom,
+  filtersAtom,
+  propertyAtom,
+  savedFiltersAtom,
+} from "@/lib/propertyAtom";
 import { toast } from "sonner";
+import type { FairnessOutput, Filters } from "@/type";
 
 export function FilterSection({
-  total,
   loading,
   onFilter,
 }: {
-  total: number;
   loading: boolean;
-  onFilter: (filters: any) => void;
+  onFilter: (filters: Filters) => void;
 }) {
-  const [filters, setFilters] = useAtom(filtersAtom);
   const setSavedFilters = useSetAtom(savedFiltersAtom);
+  const setFairnessMap = useSetAtom(fairnessMapAtom);
+  const [askingPrice, setAskingPrice] = useState("0");
+  const property = useAtomValue(propertyAtom);
+  const [filters, setFilters] = useAtom(filtersAtom);
+
+  // Local state for draft filters (not applied until user clicks Apply)
+  const [draftFilters, setDraftFilters] = useState<Filters>(filters);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [openSaveDialog, setOpenSaveDialog] = useState(false);
+  const [analyzingFairness, setAnalyzingFairness] = useState(false);
   const [filterName, setFilterName] = useState("");
 
-  // Local states for advanced filters
-  const [yearFrom, setYearFrom] = useState("");
-  const [monthFrom, setMonthFrom] = useState("");
-  const [yearTo, setYearTo] = useState("");
-  const [monthTo, setMonthTo] = useState("");
-  const [minArea, setMinArea] = useState(50);
-  const [maxArea, setMaxArea] = useState(150);
-  const [minStorey, setMinStorey] = useState(1);
-  const [maxStorey, setMaxStorey] = useState(30);
-
-  // Initialize local states from filters on mount
-  useEffect(() => {
-    if (filters.monthFrom) {
-      const [year, month] = filters.monthFrom.split("-");
-      setYearFrom(year || "");
-      setMonthFrom(month || "");
-    }
-    if (filters.monthTo) {
-      const [year, month] = filters.monthTo.split("-");
-      setYearTo(year || "");
-      setMonthTo(month || "");
-    }
-    if (filters.minArea) setMinArea(Number(filters.minArea));
-    if (filters.maxArea) setMaxArea(Number(filters.maxArea));
-    if (filters.minStorey) setMinStorey(Number(filters.minStorey));
-    if (filters.maxStorey) setMaxStorey(Number(filters.maxStorey));
-  }, [filters]);
-
+  // --- Helpers ---
   const clearFilters = () => {
-    setFilters({
-      town: "",
-      flatType: "",
-      sortBy: "price-asc",
-      monthFrom: "",
-      monthTo: "",
-      minArea: "",
-      maxArea: "",
-      minStorey: "",
-      maxStorey: "",
-      askingPrice: "",
-    });
-    setYearFrom("");
-    setMonthFrom("");
-    setYearTo("");
-    setMonthTo("");
-    setMinArea(50);
-    setMaxArea(150);
-    setMinStorey(1);
-    setMaxStorey(30);
-  };
-
-  const handleChange = (field: string, value: string) => {
-    // Only update local state, don't trigger onFilter
-    setFilters((prev: any) => ({ ...prev, [field]: value }));
+    setDraftFilters(defaultFilters);
   };
 
   const applyFilters = () => {
-    // Combine year/month into YYYY-MM format
-    const monthFromValue =
-      yearFrom && monthFrom ? `${yearFrom}-${monthFrom}` : "";
-    const monthToValue = yearTo && monthTo ? `${yearTo}-${monthTo}` : "";
+    setFilters(draftFilters);
+    onFilter(draftFilters);
+  };
 
-    const updatedFilters = {
-      ...filters,
-      monthFrom: monthFromValue,
-      monthTo: monthToValue,
-      minArea: minArea.toString(),
-      maxArea: maxArea.toString(),
-      minStorey: minStorey.toString(),
-      maxStorey: maxStorey.toString(),
-    };
+  const handleChange = (field: keyof Filters, value: string) =>
+    setDraftFilters((prev) => ({ ...prev, [field]: value }));
 
-    setFilters(updatedFilters);
-    onFilter(updatedFilters);
+  const parseRemainingLease = (leaseStr: string): number => {
+    if (!leaseStr) return 0;
+    const yearsMatch = leaseStr.match(/(\d+)\s*years?/i);
+    const monthsMatch = leaseStr.match(/(\d+)\s*months?/i);
+    const years = yearsMatch ? parseInt(yearsMatch[1]) : 0;
+    const months = monthsMatch ? parseInt(monthsMatch[1]) : 0;
+    return years + months / 12;
   };
 
   const handleSaveFilter = async () => {
     try {
-      // Include all current filter values including asking price and advanced filters
-      const filterToSave = {
-        ...filters,
-        monthFrom: yearFrom && monthFrom ? `${yearFrom}-${monthFrom}` : "",
-        monthTo: yearTo && monthTo ? `${yearTo}-${monthTo}` : "",
-        minArea: minArea.toString(),
-        maxArea: maxArea.toString(),
-        minStorey: minStorey.toString(),
-        maxStorey: maxStorey.toString(),
-      };
-
       const res = await fetch("/api/saved-filters", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: filterName, filters: filterToSave }),
+        body: JSON.stringify({ name: filterName, filters: draftFilters }),
       });
 
       if (!res.ok) throw new Error("Failed to save filter");
-
       const newFilter = await res.json();
-      setSavedFilters((prev) => [...prev, newFilter]);
 
+      setSavedFilters((prev) => [...prev, newFilter]);
       setOpenSaveDialog(false);
       setFilterName("");
 
@@ -154,75 +109,132 @@ export function FilterSection({
     }
   };
 
-  const currentYear = new Date().getFullYear();
-  const years = Array.from({ length: 9 }, (_, i) => currentYear - i);
-  const months = [
-    { value: "01", label: "January" },
-    { value: "02", label: "February" },
-    { value: "03", label: "March" },
-    { value: "04", label: "April" },
-    { value: "05", label: "May" },
-    { value: "06", label: "June" },
-    { value: "07", label: "July" },
-    { value: "08", label: "August" },
-    { value: "09", label: "September" },
-    { value: "10", label: "October" },
-    { value: "11", label: "November" },
-    { value: "12", label: "December" },
-  ];
+  const handleAnalyzeFairness = async () => {
+    setAnalyzingFairness(true);
+    try {
+      const subjects = property.map((p) => ({
+        town: p.town,
+        flat_type: p.flatType,
+        floor_area_sqm: p.floor_area_sqm,
+        remaining_lease_years: parseRemainingLease(p.remaining_lease_years),
+        asking_price: askingPrice,
+        id: p.id,
+      }));
+      const response = await fetch("/api/fairness", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subjects,
+          coeffs: {
+            beta_lease: 0.015,
+            gamma_logarea: -0.15,
+          },
+        }),
+      });
 
-  const hasActiveFilters = !!(
-    filters.askingPrice ||
-    filters.town ||
-    filters.flatType ||
-    yearFrom ||
-    monthFrom ||
-    yearTo ||
-    monthTo ||
-    minArea !== 50 ||
-    maxArea !== 150 ||
-    minStorey !== 1 ||
-    maxStorey !== 30
+      if (response.ok) {
+        const results: FairnessOutput[] = await response.json();
+        const newFairnessMap: Record<string, FairnessOutput> = {};
+        results.forEach((res, index) => {
+          const id = subjects[index].id;
+          newFairnessMap[id] = res;
+        });
+        setFairnessMap(newFairnessMap);
+      } else {
+        console.error("Fairness analysis failed");
+      }
+    } catch (error) {
+      console.error("Error during fairness analysis:", error);
+    } finally {
+      setAnalyzingFairness(false);
+    }
+  };
+
+  // --- UI Data ---
+  const currentYear = new Date().getFullYear();
+  const years = useMemo(
+    () => Array.from({ length: 10 }, (_, i) => currentYear - i),
+    [currentYear]
   );
 
+  const months = useMemo(
+    () => [
+      { value: "01", label: "January" },
+      { value: "02", label: "February" },
+      { value: "03", label: "March" },
+      { value: "04", label: "April" },
+      { value: "05", label: "May" },
+      { value: "06", label: "June" },
+      { value: "07", label: "July" },
+      { value: "08", label: "August" },
+      { value: "09", label: "September" },
+      { value: "10", label: "October" },
+      { value: "11", label: "November" },
+      { value: "12", label: "December" },
+    ],
+    []
+  );
+
+  const hasActiveFilters = useMemo(
+    () =>
+      Object.entries(draftFilters).some(
+        ([k, v]) => v && v !== defaultFilters[k as keyof Filters]
+      ),
+    [draftFilters]
+  );
+
+  // --- Render ---
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
       {/* Header */}
-      <div className="p-6 pb-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Search size={20} />
-            <h2 className="text-lg font-semibold text-gray-800">
-              Filter Properties
-            </h2>
-          </div>
-          <div className="text-right text-gray-600">
-            <strong>{total}</strong> properties found
-          </div>
+      <div className="p-6 pb-4 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Search size={20} />
+          <h2 className="text-lg font-semibold text-gray-800">
+            Filter Properties
+          </h2>
+        </div>
+        <div className="text-right text-gray-600">
+          <strong>{property.length}</strong> properties found
         </div>
       </div>
 
       <Separator />
 
-      {/* Basic Filters Grid */}
+      {/* Basic Filters */}
       <div className="px-6 py-4 space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Asking Price */}
           <div className="space-y-2">
-            <div className="text-sm font-medium text-gray-700">
-              Max Asking Price
+            <div className="text-sm font-medium text-gray-700 flex items-center justify-between">
+              Asking Price
             </div>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">
-                $
-              </span>
-              <Input
-                type="number"
-                placeholder="e.g. 500000"
-                value={filters.askingPrice}
-                onChange={(e) => handleChange("askingPrice", e.target.value)}
-                className="pl-7"
-              />
+
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">
+                  $
+                </div>
+                <Input
+                  type="number"
+                  placeholder="e.g. 500000"
+                  value={askingPrice}
+                  onChange={(e) => setAskingPrice(e.target.value)}
+                  className="pl-7"
+                />
+              </div>
+
+              <Button
+                size="icon"
+                onClick={handleAnalyzeFairness}
+                disabled={analyzingFairness}
+                className="aspect-square"
+              >
+                {analyzingFairness ? (
+                  <Loader2 className="animate-spin" size={16} />
+                ) : (
+                  <ArrowUpRight size={16} />
+                )}
+              </Button>
             </div>
           </div>
 
@@ -230,25 +242,31 @@ export function FilterSection({
           <div className="space-y-2">
             <div className="text-sm font-medium text-gray-700">Town</div>
             <Select
-              value={filters.town || "all"}
+              value={draftFilters.town || "all"}
               onValueChange={(v) => handleChange("town", v === "all" ? "" : v)}
             >
               <SelectTrigger>
                 <SelectValue placeholder="All Towns" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Towns</SelectItem>
-                <SelectItem value="ANG MO KIO">Ang Mo Kio</SelectItem>
-                <SelectItem value="BEDOK">Bedok</SelectItem>
-                <SelectItem value="BISHAN">Bishan</SelectItem>
-                <SelectItem value="BUKIT BATOK">Bukit Batok</SelectItem>
-                <SelectItem value="BUKIT MERAH">Bukit Merah</SelectItem>
-                <SelectItem value="CLEMENTI">Clementi</SelectItem>
-                <SelectItem value="JURONG WEST">Jurong West</SelectItem>
-                <SelectItem value="TAMPINES">Tampines</SelectItem>
-                <SelectItem value="TOA PAYOH">Toa Payoh</SelectItem>
-                <SelectItem value="WOODLANDS">Woodlands</SelectItem>
-                <SelectItem value="YISHUN">Yishun</SelectItem>
+                {[
+                  "all",
+                  "ANG MO KIO",
+                  "BEDOK",
+                  "BISHAN",
+                  "BUKIT BATOK",
+                  "BUKIT MERAH",
+                  "CLEMENTI",
+                  "JURONG WEST",
+                  "TAMPINES",
+                  "TOA PAYOH",
+                  "WOODLANDS",
+                  "YISHUN",
+                ].map((town) => (
+                  <SelectItem key={town} value={town}>
+                    {town === "all" ? "All Towns" : town}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -257,7 +275,7 @@ export function FilterSection({
           <div className="space-y-2">
             <div className="text-sm font-medium text-gray-700">Flat Type</div>
             <Select
-              value={filters.flatType || "all"}
+              value={draftFilters.flatType || "all"}
               onValueChange={(v) =>
                 handleChange("flatType", v === "all" ? "" : v)
               }
@@ -266,21 +284,27 @@ export function FilterSection({
                 <SelectValue placeholder="All Types" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="2 ROOM">2 Room</SelectItem>
-                <SelectItem value="3 ROOM">3 Room</SelectItem>
-                <SelectItem value="4 ROOM">4 Room</SelectItem>
-                <SelectItem value="5 ROOM">5 Room</SelectItem>
-                <SelectItem value="EXECUTIVE">Executive</SelectItem>
+                {[
+                  "all",
+                  "2 ROOM",
+                  "3 ROOM",
+                  "4 ROOM",
+                  "5 ROOM",
+                  "EXECUTIVE",
+                ].map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {t === "all" ? "All Types" : t}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
 
-          {/* Sort By */}
+          {/* Sort */}
           <div className="space-y-2">
             <div className="text-sm font-medium text-gray-700">Sort By</div>
             <Select
-              value={filters.sortBy}
+              value={draftFilters.sortBy}
               onValueChange={(v) => handleChange("sortBy", v)}
             >
               <SelectTrigger>
@@ -296,12 +320,11 @@ export function FilterSection({
           </div>
         </div>
 
-        {/* Advanced Filters Toggle */}
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => setShowAdvanced((prev) => !prev)}
-          className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 -ml-2"
+          onClick={() => setShowAdvanced((p) => !p)}
+          className="text-primary hover:text-primary-700 hover:bg-primary-50 -ml-2"
         >
           {showAdvanced ? (
             <ChevronUp className="h-4 w-4 mr-1" />
@@ -312,160 +335,165 @@ export function FilterSection({
         </Button>
       </div>
 
-      {/* Advanced Filters Panel */}
+      {/* Advanced Filters */}
       {showAdvanced && (
         <>
           <Separator />
-          <div className="px-6 py-4 bg-gradient-to-br from-gray-50 to-white">
-            <div className="space-y-6">
-              {/* Date Range */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="font-semibold text-gray-800">
-                    Transaction Period
-                  </div>
-                  {(yearFrom || monthFrom || yearTo || monthTo) && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setYearFrom("");
-                        setMonthFrom("");
-                        setYearTo("");
-                        setMonthTo("");
-                      }}
-                      className="text-xs text-gray-600 hover:text-gray-800"
-                    >
-                      Clear dates
-                    </Button>
-                  )}
+          <div className="px-6 py-4 bg-gradient-to-br from-gray-50 to-white space-y-6">
+            <div className="flex gap-4 w-full">
+              {/* Transaction Period - From */}
+              <div className="space-y-2 w-full">
+                <div className="text-sm font-semibold text-gray-700">
+                  Transaction Period From
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* From Date */}
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <div className="text-sm font-medium text-gray-600">
-                      From
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Select value={monthFrom} onValueChange={setMonthFrom}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Month" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {months.map((m) => (
-                            <SelectItem key={m.value} value={m.value}>
-                              {m.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Select value={yearFrom} onValueChange={setYearFrom}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Year" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {years.map((year) => (
-                            <SelectItem key={year} value={year.toString()}>
-                              {year}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    <div className="text-xs text-gray-600">Year</div>
+                    <Select
+                      value={draftFilters.yearFrom || "any"}
+                      onValueChange={(v) =>
+                        handleChange("yearFrom", v === "any" ? "" : v)
+                      }
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select year" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="any">Any Year</SelectItem>
+                        {years.map((year) => (
+                          <SelectItem key={year} value={year.toString()}>
+                            {year}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
 
-                  {/* To Date */}
                   <div className="space-y-2">
-                    <div className="text-sm font-medium text-gray-600">To</div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Select value={monthTo} onValueChange={setMonthTo}>
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Month" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {months.map((m) => (
-                            <SelectItem key={m.value} value={m.value}>
-                              {m.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Select value={yearTo} onValueChange={setYearTo}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Year" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {years.map((year) => (
-                            <SelectItem key={year} value={year.toString()}>
-                              {year}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    <div className="text-xs text-gray-600">Month</div>
+                    <Select
+                      value={draftFilters.monthFrom || "any"}
+                      onValueChange={(v) =>
+                        handleChange("monthFrom", v === "any" ? "" : v)
+                      }
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select month" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="any">Any Month</SelectItem>
+                        {months.map((m) => (
+                          <SelectItem key={m.value} value={m.value}>
+                            {m.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
               </div>
 
-              <Separator />
-
-              {/* Sliders */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Floor Area Slider */}
-                <div className="space-y-2">
-                  <div className="text-sm font-semibold text-gray-600">
-                    Floor Area (sqm)
+              {/* Transaction Period - To */}
+              <div className="space-y-2 w-full">
+                <div className="text-sm font-semibold text-gray-700">
+                  Transaction Period To
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <div className="text-xs text-gray-600">Year</div>
+                    <Select
+                      value={draftFilters.yearTo || "any"}
+                      onValueChange={(v) =>
+                        handleChange("yearTo", v === "any" ? "" : v)
+                      }
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select year" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="any">Any Year</SelectItem>
+                        {years.map((year) => (
+                          <SelectItem key={year} value={year.toString()}>
+                            {year}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <div className="pt-2">
-                    <Slider
-                      min={30}
-                      max={250}
-                      step={5}
-                      value={[minArea, maxArea]}
-                      onValueChange={([min, max]) => {
-                        setMinArea(min);
-                        setMaxArea(max);
-                      }}
-                      className="w-full"
-                    />
-                    <div className="flex justify-between mt-2">
-                      <span className="text-sm font-medium text-gray-600">
-                        {minArea} sqm
-                      </span>
-                      <span className="text-sm font-medium text-gray-600">
-                        {maxArea} sqm
-                      </span>
-                    </div>
+
+                  <div className="space-y-2">
+                    <div className="text-xs text-gray-600">Month</div>
+                    <Select
+                      value={draftFilters.monthTo || "any"}
+                      onValueChange={(v) =>
+                        handleChange("monthTo", v === "any" ? "" : v)
+                      }
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select month" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="any">Any Month</SelectItem>
+                        {months.map((m) => (
+                          <SelectItem key={m.value} value={m.value}>
+                            {m.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
+              </div>
+            </div>
 
-                {/* Storey Slider */}
-                <div className="space-y-3">
-                  <div className="text-sm font-semibold text-gray-600">
+            {/* Area / Storey */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-semibold text-gray-700">
+                    Floor Area
+                  </div>
+                  <div className="text-xs text-gray-600">
+                    {draftFilters.minArea} - {draftFilters.maxArea} sqm
+                  </div>
+                </div>
+                <Slider
+                  min={30}
+                  max={250}
+                  step={5}
+                  value={[
+                    Number(draftFilters.minArea),
+                    Number(draftFilters.maxArea),
+                  ]}
+                  onValueChange={([min, max]) => {
+                    handleChange("minArea", min.toString());
+                    handleChange("maxArea", max.toString());
+                  }}
+                />
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-semibold text-gray-700">
                     Storey Range
                   </div>
-                  <div className="pt-2">
-                    <Slider
-                      min={1}
-                      max={50}
-                      step={1}
-                      value={[minStorey, maxStorey]}
-                      onValueChange={([min, max]) => {
-                        setMinStorey(min);
-                        setMaxStorey(max);
-                      }}
-                      className="w-full"
-                    />
-                    <div className="flex justify-between mt-2">
-                      <span className="text-sm font-medium text-gray-600">
-                        Level {minStorey}
-                      </span>
-                      <span className="text-sm font-medium text-gray-600">
-                        Level {maxStorey}
-                      </span>
-                    </div>
+                  <div className="text-xs text-gray-600">
+                    Level {draftFilters.minStorey} - {draftFilters.maxStorey}
                   </div>
                 </div>
+                <Slider
+                  min={1}
+                  max={50}
+                  step={1}
+                  value={[
+                    Number(draftFilters.minStorey),
+                    Number(draftFilters.maxStorey),
+                  ]}
+                  onValueChange={([min, max]) => {
+                    handleChange("minStorey", min.toString());
+                    handleChange("maxStorey", max.toString());
+                  }}
+                />
               </div>
             </div>
           </div>
@@ -474,131 +502,109 @@ export function FilterSection({
 
       <Separator />
 
-      {/* Action Buttons */}
+      {/* Actions */}
       <div className="p-6 pt-4 bg-gray-50 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <Dialog open={openSaveDialog} onOpenChange={setOpenSaveDialog}>
-            <DialogTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Save size={16} />
-                Save Filter
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-md">
-              <DialogHeader>
-                <DialogTitle>Save Filter Preset</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 py-2">
-                <div className="space-y-2">
-                  <div className="text-sm font-medium text-gray-700">
-                    Filter Name
-                  </div>
-                  <Input
-                    placeholder="Enter filter name (e.g., 'My 4-Room Search')"
-                    value={filterName}
-                    onChange={(e) => setFilterName(e.target.value)}
-                  />
+        <Dialog open={openSaveDialog} onOpenChange={setOpenSaveDialog}>
+          <DialogTrigger asChild>
+            <Button variant="outline" size="sm">
+              <Save size={16} />
+              Save Filter
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Save Filter Preset</DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <div className="text-sm font-medium text-gray-700">
+                  Filter Name
                 </div>
+                <Input
+                  placeholder="Enter filter name (e.g., 'My 4-Room Search')"
+                  value={filterName}
+                  onChange={(e) => setFilterName(e.target.value)}
+                />
+              </div>
 
-                <div className="space-y-2">
-                  <div className="text-sm font-medium text-gray-700">
-                    Filter Summary
+              <div className="space-y-2">
+                <div className="text-sm font-medium text-gray-700">
+                  Filter Summary
+                </div>
+                <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 space-y-2 max-h-64 overflow-y-auto">
+                  <div className="flex justify-between text-sm">
+                    <div className="text-gray-600">Asking Price:</div>
+                    <div className="font-medium text-gray-900">
+                      {askingPrice
+                        ? `$${Number(askingPrice).toLocaleString()}`
+                        : "Any"}
+                    </div>
                   </div>
-                  <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 space-y-2 max-h-64 overflow-y-auto">
-                    {/* Asking Price */}
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Max Asking Price:</span>
-                      <span className="font-medium text-gray-900">
-                        {filters.askingPrice
-                          ? `$${Number(filters.askingPrice).toLocaleString()}`
-                          : "Any"}
-                      </span>
-                    </div>
 
-                    {/* Town */}
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Town:</span>
-                      <span className="font-medium text-gray-900">
-                        {filters.town || "All Towns"}
-                      </span>
+                  <div className="flex justify-between text-sm">
+                    <div className="text-gray-600">Town:</div>
+                    <div className="font-medium text-gray-900">
+                      {draftFilters.town || "All Towns"}
                     </div>
+                  </div>
 
-                    {/* Flat Type */}
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Flat Type:</span>
-                      <span className="font-medium text-gray-900">
-                        {filters.flatType || "All Types"}
-                      </span>
+                  <div className="flex justify-between text-sm">
+                    <div className="text-gray-600">Flat Type:</div>
+                    <div className="font-medium text-gray-900">
+                      {draftFilters.flatType || "All Types"}
                     </div>
+                  </div>
 
-                    {/* Sort By */}
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Sort By:</span>
-                      <span className="font-medium text-gray-900">
-                        {filters.sortBy === "price-asc"
-                          ? "Price: Low to High"
-                          : filters.sortBy === "price-desc"
-                          ? "Price: High to Low"
-                          : filters.sortBy === "area-asc"
-                          ? "Area: Small to Large"
-                          : filters.sortBy === "area-desc"
-                          ? "Area: Large to Small"
-                          : "Default"}
-                      </span>
+                  <div className="flex justify-between text-sm">
+                    <div className="text-gray-600">Transaction Period:</div>
+                    <div className="font-medium text-gray-900">
+                      {draftFilters.yearFrom || draftFilters.monthFrom
+                        ? `${
+                            months.find(
+                              (m) => m.value === draftFilters.monthFrom
+                            )?.label || ""
+                          } ${draftFilters.yearFrom || ""}`
+                        : "Any"}
+                      {draftFilters.yearTo || draftFilters.monthTo
+                        ? ` - ${
+                            months.find((m) => m.value === draftFilters.monthTo)
+                              ?.label || ""
+                          } ${draftFilters.yearTo || ""}`
+                        : ""}
                     </div>
+                  </div>
 
-                    {/* Period */}
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Transaction Period:</span>
-                      <span className="font-medium text-gray-900">
-                        {yearFrom && monthFrom
-                          ? `${
-                              months.find((m) => m.value === monthFrom)?.label
-                            } ${yearFrom}`
-                          : "Any"}
-                        {yearTo && monthTo
-                          ? ` - ${
-                              months.find((m) => m.value === monthTo)?.label
-                            } ${yearTo}`
-                          : ""}
-                      </span>
+                  <div className="flex justify-between text-sm">
+                    <div className="text-gray-600">Floor Area:</div>
+                    <div className="font-medium text-gray-900">
+                      {draftFilters.minArea} - {draftFilters.maxArea} sqm
                     </div>
+                  </div>
 
-                    {/* Floor Area */}
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Floor Area:</span>
-                      <span className="font-medium text-gray-900">
-                        {minArea} - {maxArea} sqm
-                      </span>
-                    </div>
-
-                    {/* Storey Range */}
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Storey Range:</span>
-                      <span className="font-medium text-gray-900">
-                        Level {minStorey} - {maxStorey}
-                      </span>
+                  <div className="flex justify-between text-sm">
+                    <div className="text-gray-600">Storey Range:</div>
+                    <div className="font-medium text-gray-900">
+                      Level {draftFilters.minStorey} - {draftFilters.maxStorey}
                     </div>
                   </div>
                 </div>
               </div>
-              <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => setOpenSaveDialog(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleSaveFilter}
-                  disabled={!filterName.trim()}
-                >
-                  Save Filter
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        </div>
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setOpenSaveDialog(false)}
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleSaveFilter} disabled={!filterName.trim()}>
+                Save Filter
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <div className="flex items-center gap-2">
           {hasActiveFilters && (

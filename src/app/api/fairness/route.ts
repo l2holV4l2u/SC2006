@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
-import { SubjectInput, Comparable, Coeffs, FairnessOutput } from "@/type";
+import {
+  SubjectInput,
+  Comparable,
+  Coeffs,
+  FairnessOutput,
+  Property,
+} from "@/type";
 import { getCache } from "@/lib/dataset";
 
 // Helper: Weighted median
@@ -54,7 +60,21 @@ function computeFairness(
   const A = parseFloat(subject.floor_area_sqm as any);
   const L = parseFloat(subject.remaining_lease_years as any);
 
-  const normalizedDataset = dataset.map(normalizeRecord);
+  const normalizedDataset: Comparable[] = [];
+  dataset.forEach((prop: Property) => {
+    prop.trend.forEach((t) => {
+      normalizedDataset.push({
+        month: t.date,
+        town: prop.town.toLowerCase().trim(),
+        flat_type: prop.flatType.toLowerCase().trim(),
+        floor_area_sqm: t.floor_area_sqm || prop.floor_area_sqm || 0,
+        remaining_lease_years: parseFloat(t.remaining_lease_years || "0"),
+        resale_price: t.avgPrice || prop.price || 0,
+        storey_range: t.storey_range || prop.storey_range || "",
+      });
+    });
+  });
+
   let pool = normalizedDataset.filter(
     (r) => r.town === town && r.flat_type === ftype && r.floor_area_sqm > 0
   );
@@ -117,35 +137,37 @@ function computeFairness(
 
 export async function POST(req: Request) {
   try {
-    const { subject, coeffs } = await req.json();
+    const { subjects, coeffs } = await req.json(); // note: subjects is an array
 
-    if (!subject || !coeffs) {
+    if (!subjects || !coeffs) {
       return NextResponse.json(
-        { error: "Missing required fields: subject or coeffs" },
-        { status: 400 }
-      );
-    }
-
-    if (!subject.town || !subject.flat_type) {
-      return NextResponse.json(
-        { error: "Subject missing required fields (town, flat_type)" },
+        { error: "Missing required fields: subjects or coeffs" },
         { status: 400 }
       );
     }
 
     const cache = await getCache();
-    const datasetKey = `${subject.town.toLowerCase()}|${subject.flat_type.toLowerCase()}`;
-    const dataset = cache[datasetKey] || [];
 
-    if (dataset.length === 0) {
-      return NextResponse.json(
-        { error: `No dataset found for ${subject.town} ${subject.flat_type}` },
-        { status: 404 }
-      );
-    }
+    console.log(cache);
 
-    const result = computeFairness(subject, dataset, coeffs);
-    return NextResponse.json(result);
+    const results = subjects.map((subject: any) => {
+      if (!subject.town || !subject.flat_type) {
+        return { error: "Missing required fields (town, flat_type)" };
+      }
+
+      const datasetKey = `${subject.town.toLowerCase()}|${subject.flat_type.toLowerCase()}`;
+      const dataset = cache[datasetKey] || [];
+
+      if (dataset.length === 0) {
+        return {
+          error: `No dataset found for ${subject.town} ${subject.flat_type}`,
+        };
+      }
+
+      return computeFairness(subject, dataset, coeffs);
+    });
+
+    return NextResponse.json(results);
   } catch (err) {
     console.error("Fairness API error:", err);
     return NextResponse.json(

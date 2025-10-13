@@ -59,7 +59,8 @@ export function PropertyCard({ property, fairness }: PropertyCardProps) {
             {toTitleCase(property.flatType)} in {toTitleCase(property.town)}
           </h3>
           <p className="text-sm text-gray-500 mt-0.5">
-            {property.floor_area_sqm}m² • {property.remaining_lease_years}
+            {property.floor_area_sqm.toFixed(2)} m² •{" "}
+            {property.remaining_lease_years}
           </p>
         </div>
         {fairness && <div className="ml-2">{getBadge(fairness.label)}</div>}

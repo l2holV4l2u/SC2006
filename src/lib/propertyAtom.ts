@@ -1,20 +1,22 @@
-import { Filters, SavedFilter } from "@/type";
+import { FairnessOutput, Filters, Property, SavedFilter } from "@/type";
 import { atom } from "jotai";
 
-const defaultFilters: Filters = {
+export const defaultFilters: Filters = {
   town: "",
   flatType: "",
   sortBy: "price-asc",
+  yearFrom: "",
+  yearTo: "",
   monthFrom: "",
   monthTo: "",
-  minArea: "",
-  maxArea: "",
-  minStorey: "",
-  maxStorey: "",
-  askingPrice: "",
+  minArea: "1",
+  maxArea: "250",
+  minStorey: "1",
+  maxStorey: "50",
 };
 
 export const favAtom = atom<Set<number>>(new Set<number>());
-export const askingPriceAtom = atom<string>("0");
+export const propertyAtom = atom<Property[]>([]);
 export const filtersAtom = atom<Filters>(defaultFilters);
 export const savedFiltersAtom = atom<SavedFilter[]>([]);
+export const fairnessMapAtom = atom<Record<string, FairnessOutput>>({});
