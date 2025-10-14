@@ -12,6 +12,9 @@ export async function middleware(req: NextRequest) {
   // Get JWT token from cookies
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
 
+  console.log("TOKEN CHECK:", token);
+  console.log("SECRET CHECK:", process.env.NEXTAUTH_SECRET);
+
   // No token - redirect to /login
   if (isProtected && !token) {
     return NextResponse.redirect(new URL("/login", req.url));
