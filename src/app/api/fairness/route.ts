@@ -147,9 +147,6 @@ export async function POST(req: Request) {
     }
 
     const cache = await getCache();
-
-    console.log(cache);
-
     const results = subjects.map((subject: any) => {
       if (!subject.town || !subject.flat_type) {
         return { error: "Missing required fields (town, flat_type)" };

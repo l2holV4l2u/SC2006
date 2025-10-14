@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/dialog";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
+  askingPriceAtom,
   defaultFilters,
   fairnessMapAtom,
   filtersAtom,
@@ -42,15 +43,17 @@ import { toast } from "sonner";
 import type { FairnessOutput, Filters } from "@/type";
 
 export function FilterSection({
+  total,
   loading,
   onFilter,
 }: {
+  total: number;
   loading: boolean;
   onFilter: (filters: Filters) => void;
 }) {
   const setSavedFilters = useSetAtom(savedFiltersAtom);
   const setFairnessMap = useSetAtom(fairnessMapAtom);
-  const [askingPrice, setAskingPrice] = useState("0");
+  const [askingPrice, setAskingPrice] = useAtom(askingPriceAtom);
   const property = useAtomValue(propertyAtom);
   const [filters, setFilters] = useAtom(filtersAtom);
 
@@ -61,16 +64,12 @@ export function FilterSection({
   const [analyzingFairness, setAnalyzingFairness] = useState(false);
   const [filterName, setFilterName] = useState("");
 
+  // Sync draftFilters when filters atom changes (e.g., from saved filter selection)
+  useEffect(() => {
+    setDraftFilters(filters);
+  }, [filters]);
+
   // --- Helpers ---
-  const clearFilters = () => {
-    setDraftFilters(defaultFilters);
-  };
-
-  const applyFilters = () => {
-    setFilters(draftFilters);
-    onFilter(draftFilters);
-  };
-
   const handleChange = (field: keyof Filters, value: string) =>
     setDraftFilters((prev) => ({ ...prev, [field]: value }));
 
@@ -88,7 +87,10 @@ export function FilterSection({
       const res = await fetch("/api/saved-filters", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: filterName, filters: draftFilters }),
+        body: JSON.stringify({
+          name: filterName,
+          filters: { ...draftFilters, askingPrice },
+        }),
       });
 
       if (!res.ok) throw new Error("Failed to save filter");
@@ -98,14 +100,10 @@ export function FilterSection({
       setOpenSaveDialog(false);
       setFilterName("");
 
-      toast.success("Filter saved successfully!", {
-        description: `"${filterName}" has been added to your saved filters.`,
-      });
+      toast.success("Filter saved successfully!");
     } catch (error) {
       console.error(error);
-      toast.error("Failed to save filter", {
-        description: "Please try again later.",
-      });
+      toast.error("Failed to save filter");
     }
   };
 
@@ -195,7 +193,7 @@ export function FilterSection({
           </h2>
         </div>
         <div className="text-right text-gray-600">
-          <strong>{property.length}</strong> properties found
+          <strong>{total}</strong> properties found
         </div>
       </div>
 
@@ -251,17 +249,33 @@ export function FilterSection({
               <SelectContent>
                 {[
                   "all",
-                  "ANG MO KIO",
-                  "BEDOK",
-                  "BISHAN",
-                  "BUKIT BATOK",
-                  "BUKIT MERAH",
-                  "CLEMENTI",
-                  "JURONG WEST",
-                  "TAMPINES",
-                  "TOA PAYOH",
-                  "WOODLANDS",
-                  "YISHUN",
+                  "Ang Mo Kio",
+                  "Bedok",
+                  "Bishan",
+                  "Bukit Batok",
+                  "Bukit Merah",
+                  "Bukit Panjang",
+                  "Bukit Timah",
+                  "Central Area",
+                  "Choa Chu Kang",
+                  "Clementi",
+                  "Geylang",
+                  "Hougang",
+                  "Jurong East",
+                  "Jurong West",
+                  "Kallang/Whampoa",
+                  "Marine Parade",
+                  "Pasir Ris",
+                  "Punggol",
+                  "Queenstown",
+                  "Sembawang",
+                  "Sengkang",
+                  "Serangoon",
+                  "Tampines",
+                  "Tengah",
+                  "Toa Payoh",
+                  "Woodlands",
+                  "Yishun",
                 ].map((town) => (
                   <SelectItem key={town} value={town}>
                     {town === "all" ? "All Towns" : town}
@@ -286,11 +300,11 @@ export function FilterSection({
               <SelectContent>
                 {[
                   "all",
-                  "2 ROOM",
-                  "3 ROOM",
-                  "4 ROOM",
-                  "5 ROOM",
-                  "EXECUTIVE",
+                  "2 Room",
+                  "3 Room",
+                  "4 Room",
+                  "5 Room",
+                  "Executive",
                 ].map((t) => (
                   <SelectItem key={t} value={t}>
                     {t === "all" ? "All Types" : t}
@@ -611,7 +625,7 @@ export function FilterSection({
             <Button
               variant="ghost"
               size="sm"
-              onClick={clearFilters}
+              onClick={() => setDraftFilters(defaultFilters)}
               disabled={loading}
               className="text-gray-600 hover:text-gray-900"
             >
@@ -619,7 +633,14 @@ export function FilterSection({
               Clear All
             </Button>
           )}
-          <Button size="sm" onClick={applyFilters} disabled={loading}>
+          <Button
+            size="sm"
+            onClick={() => {
+              setFilters(draftFilters);
+              onFilter(draftFilters);
+            }}
+            disabled={loading}
+          >
             <Filter size={16} />
             Apply Filters
           </Button>

@@ -57,7 +57,11 @@ export default function PropertyListingPage() {
     <div className="min-h-screen bg-gray-50">
       <DashboardNavbar />
       <div className="container mx-auto px-4 py-6 space-y-6 mt-12 max-w-6xl">
-        <FilterSection loading={loading} onFilter={fetchProperties} />
+        <FilterSection
+          total={pagination.total}
+          loading={loading}
+          onFilter={fetchProperties}
+        />
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 min-h-[24rem]">
           {loading

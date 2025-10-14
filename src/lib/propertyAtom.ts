@@ -2,6 +2,7 @@ import { FairnessOutput, Filters, Property, SavedFilter } from "@/type";
 import { atom } from "jotai";
 
 export const defaultFilters: Filters = {
+  askingPrice: "0",
   town: "",
   flatType: "",
   sortBy: "price-asc",
@@ -20,3 +21,4 @@ export const propertyAtom = atom<Property[]>([]);
 export const filtersAtom = atom<Filters>(defaultFilters);
 export const savedFiltersAtom = atom<SavedFilter[]>([]);
 export const fairnessMapAtom = atom<Record<string, FairnessOutput>>({});
+export const askingPriceAtom = atom("0");

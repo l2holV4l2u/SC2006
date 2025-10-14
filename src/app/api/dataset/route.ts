@@ -193,10 +193,16 @@ export async function GET(req: Request) {
     );
     return response;
   } catch (err) {
-    console.error(err);
-    return NextResponse.json(
+    console.error("Dataset fetch error:", err);
+
+    // Do NOT set cache headers here
+    const errorResponse = NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
     );
+
+    // Ensure browsers/CDNs don’t cache this
+    errorResponse.headers.set("Cache-Control", "no-store, max-age=0");
+    return errorResponse;
   }
 }

@@ -1,6 +1,7 @@
 "use client";
 import { Card } from "@/components/ui/card";
-import { TrendingUp, TrendingDown, Minus, Info } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { TrendingUp, TrendingDown, Minus, Info, Download } from "lucide-react";
 import {
   ResponsiveContainer,
   LineChart,
@@ -12,6 +13,7 @@ import {
 } from "recharts";
 import { toTitleCase } from "@/lib/utils";
 import { Property, FairnessOutput } from "@/type";
+import * as XLSX from "xlsx";
 
 interface PropertyCardProps {
   property: Property;
@@ -50,8 +52,48 @@ export function PropertyCard({ property, fairness }: PropertyCardProps) {
     }
   };
 
+  const exportToExcel = () => {
+    // Prepare the data for Excel export
+    const exportData = property.trend.map((t) => ({
+      Town: toTitleCase(property.town),
+      "Flat Type": toTitleCase(property.flatType),
+      Month: t.date,
+      "Average Price": t.avgPrice,
+      "Floor Area (sqm)": t.floor_area_sqm,
+      "Remaining Lease": t.remaining_lease_years,
+      "Storey Range": t.storey_range,
+    }));
+
+    // Create a new workbook
+    const wb = XLSX.utils.book_new();
+
+    // Convert data to worksheet
+    const ws = XLSX.utils.json_to_sheet(exportData);
+
+    // Set column widths for better readability
+    ws["!cols"] = [
+      { wch: 30 }, // Title
+      { wch: 15 }, // Town
+      { wch: 12 }, // Flat Type
+      { wch: 10 }, // Month
+      { wch: 15 }, // Average Price
+      { wch: 15 }, // Floor Area
+      { wch: 20 }, // Remaining Lease
+      { wch: 15 }, // Storey Range
+    ];
+
+    // Add the worksheet to the workbook
+    XLSX.utils.book_append_sheet(wb, ws, "Property Data");
+
+    // Generate filename
+    const filename = `${property.flatType}_${property.town}_${property.date}.xlsx`;
+
+    // Save the file
+    XLSX.writeFile(wb, filename);
+  };
+
   return (
-    <Card className="p-4 shadow-sm border border-gray-200 bg-white hover:shadow-md transition-shadow gap-4">
+    <Card className="group p-4 shadow-sm border border-gray-200 bg-white hover:shadow-md hover:border-blue-500 transition-all gap-4">
       {/* Header Section */}
       <div className="flex justify-between items-start">
         <div className="flex-1">
@@ -63,7 +105,17 @@ export function PropertyCard({ property, fairness }: PropertyCardProps) {
             {property.remaining_lease_years}
           </p>
         </div>
-        {fairness && <div className="ml-2">{getBadge(fairness.label)}</div>}
+        <div className="flex flex-col items-end gap-2">
+          {fairness && getBadge(fairness.label)}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={exportToExcel}
+            className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+          >
+            <Download className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       {/* Price Trend Chart */}
@@ -119,15 +171,6 @@ export function PropertyCard({ property, fairness }: PropertyCardProps) {
           </LineChart>
         </ResponsiveContainer>
       </div>
-
-      {/* Additional Info */}
-      {fairness && fairness.comps && fairness.comps.length > 0 && (
-        <div className="mt-2 pt-2 border-t border-gray-100">
-          <p className="text-xs text-gray-500">
-            Based on {fairness.comps.length} comparable transactions
-          </p>
-        </div>
-      )}
     </Card>
   );
 }

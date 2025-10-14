@@ -61,12 +61,7 @@ export default function SubscriptionPage() {
       }, 2000);
     } catch (error) {
       // Show error toast
-      toast.error("Subscription Failed", {
-        description:
-          error instanceof Error
-            ? error.message
-            : "Failed to update subscription",
-      });
+      toast.error("Subscription Failed");
       setLoading(false);
       setSelectedPlan(null);
     }

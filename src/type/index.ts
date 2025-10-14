@@ -98,6 +98,7 @@ export type Filters = {
   maxArea: string;
   minStorey: string;
   maxStorey: string;
+  askingPrice?: string;
 };
 
 export type SavedFilter = {
