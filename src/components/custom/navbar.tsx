@@ -255,20 +255,12 @@ export function DashboardNavbar() {
             {/* Nav Links */}
             <div className="hidden md:flex items-center space-x-1">
               <Link href="/">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-primary hover:text-primary/80"
-                >
+                <Button variant="ghost" size="sm">
                   Home
                 </Button>
               </Link>
               <Link href="/dashboard">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-primary font-medium hover:text-primary/80"
-                >
+                <Button variant="ghost" size="sm">
                   Dashboard
                 </Button>
               </Link>
@@ -290,7 +282,7 @@ export function DashboardNavbar() {
                       {userName.charAt(0).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
-                  <span className="hidden md:inline text-sm text-primary">
+                  <span className="hidden md:inline text-sm">
                     {userName.split(" ")[0]}
                   </span>
                 </Button>
