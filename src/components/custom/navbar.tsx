@@ -149,7 +149,6 @@ export function DashboardNavbar() {
   const userName = user?.name ?? "User";
   const userImage = user?.image ?? "https://i.pravatar.cc/32";
 
-  // Fetch saved filters on mount
   useEffect(() => {
     if (session) {
       fetch("/api/saved-filters")
@@ -160,7 +159,6 @@ export function DashboardNavbar() {
   }, [session, setSavedFilters]);
 
   const handleSelectFilter = (selectedFilters: Filters, filterName: string) => {
-    console.log(selectedFilters);
     setFilters(selectedFilters);
     setOpenSavedFilters(false);
     setAskingPrice(selectedFilters.askingPrice || "0");
@@ -174,20 +172,14 @@ export function DashboardNavbar() {
     try {
       const res = await fetch(`/api/saved-filters?id=${filterToDelete.id}`, {
         method: "DELETE",
-        headers: { "Content-Type": "application/json" },
       });
-
       if (res.ok) {
         setSavedFilters((prev) =>
           prev.filter((f) => f.id !== filterToDelete.id)
         );
         toast.success("Filter deleted");
-      } else {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || "Failed to delete");
-      }
+      } else throw new Error("Failed to delete");
     } catch (error) {
-      console.error(error);
       toast.error("Failed to delete filter");
     } finally {
       setDeletingId(null);
@@ -205,10 +197,7 @@ export function DashboardNavbar() {
       });
     }
     if (filters.town) {
-      items.push({
-        icon: <MapPin className="h-3 w-3" />,
-        label: filters.town,
-      });
+      items.push({ icon: <MapPin className="h-3 w-3" />, label: filters.town });
     }
     if (filters.flatType) {
       items.push({
@@ -227,10 +216,7 @@ export function DashboardNavbar() {
         .join(" ");
       const to = [filters.monthTo, filters.yearTo].filter(Boolean).join(" ");
       const dateRange = [from, to].filter(Boolean).join(" - ");
-      items.push({
-        icon: <Calendar className="h-3 w-3" />,
-        label: dateRange,
-      });
+      items.push({ icon: <Calendar className="h-3 w-3" />, label: dateRange });
     }
     if (filters.minArea || filters.maxArea) {
       items.push({
@@ -251,9 +237,9 @@ export function DashboardNavbar() {
   return (
     <>
       <header className="fixed top-0 left-0 right-0 z-50 bg-white shadow-sm border-b border-gray-200 w-full">
-        <nav className="container flex items-center justify-between py-3 px-6 mx-auto max-w-6xl justify-self-center">
-          {/* Logo Section */}
+        <nav className="container flex items-center justify-between py-3 px-6 mx-auto max-w-6xl">
           <div className="flex items-center space-x-6">
+            {/* Logo */}
             <Link
               href="/"
               className="font-semibold text-lg text-primary flex items-center"
@@ -266,13 +252,13 @@ export function DashboardNavbar() {
               Resale Viewer
             </Link>
 
-            {/* Navigation Links */}
+            {/* Nav Links */}
             <div className="hidden md:flex items-center space-x-1">
               <Link href="/">
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="text-gray-600 hover:text-gray-900"
+                  className="text-primary hover:text-primary/80"
                 >
                   Home
                 </Button>
@@ -281,7 +267,7 @@ export function DashboardNavbar() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="text-primary-600 font-medium"
+                  className="text-primary font-medium hover:text-primary/80"
                 >
                   Dashboard
                 </Button>
@@ -304,11 +290,12 @@ export function DashboardNavbar() {
                       {userName.charAt(0).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
-                  <span className="hidden md:inline text-sm text-gray-700">
+                  <span className="hidden md:inline text-sm text-primary">
                     {userName.split(" ")[0]}
                   </span>
                 </Button>
               </DropdownMenuTrigger>
+
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>Account</DropdownMenuLabel>
                 <DropdownMenuSeparator />
@@ -323,6 +310,7 @@ export function DashboardNavbar() {
                   </Link>
                 </DropdownMenuItem>
 
+                {/* Saved Filters Dialog */}
                 <Dialog
                   open={openSavedFilters}
                   onOpenChange={setOpenSavedFilters}
@@ -332,17 +320,21 @@ export function DashboardNavbar() {
                       <Heart className="mr-2 h-4 w-4" />
                       Saved Filters
                       {savedFilters.length > 0 && (
-                        <Badge variant="secondary" className="ml-auto">
+                        <Badge
+                          variant="secondary"
+                          className="ml-auto text-white"
+                        >
                           {savedFilters.length}
                         </Badge>
                       )}
                     </DropdownMenuItem>
                   </DialogTrigger>
+
                   <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col p-0">
-                    <DialogHeader className="px-6 pt-6 pb-4 border-b bg-gradient-to-br from-blue-50 to-white">
+                    <DialogHeader className="px-6 pt-6 pb-4 border-b bg-gradient-to-br from-secondary-100 to-white">
                       <DialogTitle className="flex items-center gap-3 text-xl">
-                        <div className="p-2 bg-blue-100 rounded-lg">
-                          <Heart className="h-5 w-5 text-blue-600" />
+                        <div className="p-2 rounded-lg">
+                          <Heart className="text-red-600" size={24} />
                         </div>
                         <div>
                           <div className="font-semibold text-gray-900">
@@ -365,7 +357,7 @@ export function DashboardNavbar() {
                       {savedFilters.length === 0 ? (
                         <div className="text-center py-16">
                           <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
-                            <Heart className="h-8 w-8 text-gray-400" />
+                            <Heart className="h-8 w-8 text-red-600" />
                           </div>
                           <h3 className="text-lg font-medium text-gray-900 mb-2">
                             No saved filters yet
@@ -383,19 +375,17 @@ export function DashboardNavbar() {
                             return (
                               <div
                                 key={f.id}
-                                className="group relative rounded-xl border-2 border-gray-200 hover:border-blue-400 bg-white transition-all duration-200 overflow-hidden"
+                                className="group relative rounded-xl border-2 border-gray-200 hover:border-secondary-400 bg-white transition-all duration-200 overflow-hidden"
                               >
-                                {/* Card Content - Clickable */}
                                 <div
                                   onClick={() =>
                                     handleSelectFilter(f.filters, f.name)
                                   }
                                   className="p-5 cursor-pointer"
                                 >
-                                  {/* Header */}
                                   <div className="flex items-start justify-between mb-3">
                                     <div className="flex-1 min-w-0">
-                                      <h3 className="font-semibold text-base text-gray-900 group-hover:text-blue-600 transition-colors truncate">
+                                      <h3 className="font-semibold text-base text-gray-900 transition-colors truncate">
                                         {f.name}
                                       </h3>
                                       <p className="text-xs text-gray-500 mt-1">
@@ -411,14 +401,13 @@ export function DashboardNavbar() {
                                     </div>
                                   </div>
 
-                                  {/* Filter Summary */}
                                   {summary.length > 0 ? (
                                     <div className="flex flex-wrap gap-1.5">
                                       {summary.map((item, idx) => (
                                         <Badge
                                           key={idx}
                                           variant="secondary"
-                                          className="text-xs font-normal bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-50 px-2 py-0.5"
+                                          className="text-xs font-normal bg-secondary-50 text-secondary-700 border-secondary-200 hover:bg-secondary-100 px-2 py-0.5"
                                         >
                                           <span className="mr-1">
                                             {item.icon}
@@ -434,7 +423,7 @@ export function DashboardNavbar() {
                                   )}
                                 </div>
 
-                                {/* Delete Button - Separate from clickable area */}
+                                {/* Delete Button */}
                                 <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
                                   <Button
                                     variant="ghost"
@@ -453,8 +442,7 @@ export function DashboardNavbar() {
                                   </Button>
                                 </div>
 
-                                {/* Hover Effect Border */}
-                                <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+                                <div className="absolute inset-0 bg-gradient-to-br from-secondary-500/5 to-secondary-400/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
                               </div>
                             );
                           })}
@@ -475,7 +463,7 @@ export function DashboardNavbar() {
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={() => signOut({ callbackUrl: "/login" })}
-                  className="text-red-800 cursor-pointer"
+                  className="text-red-600 cursor-pointer"
                 >
                   <LogOut className="mr-2 h-4 w-4" />
                   Sign Out
@@ -487,27 +475,10 @@ export function DashboardNavbar() {
               <Button variant="highlight">Login</Button>
             </Link>
           )}
-
-          {/* Mobile Menu Button */}
-          <Button variant="ghost" size="sm" className="md:hidden">
-            <svg
-              className="h-5 w-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 6h16M4 12h16M4 18h16"
-              />
-            </svg>
-          </Button>
         </nav>
       </header>
 
-      {/* Delete Confirmation Dialog */}
+      {/* Delete Confirmation */}
       <AlertDialog
         open={!!filterToDelete}
         onOpenChange={(open) => !open && setFilterToDelete(null)}

@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import { Navbar } from "@/components/custom/navbar";
+import Link from "next/link";
 
 export default function HomePage() {
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -82,9 +83,11 @@ export default function HomePage() {
             </div>
 
             <div className="flex justify-center mt-10">
-              <Button size="lg" variant="highlight">
-                Explore Now
-              </Button>
+              <Link href="/dashboard">
+                <Button size="lg" variant="highlight">
+                  Explore Now
+                </Button>
+              </Link>
             </div>
           </div>
         </div>

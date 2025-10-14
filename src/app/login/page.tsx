@@ -34,7 +34,21 @@ export default function LoginPage() {
 
   // Show loading while checking session
   if (status === "loading")
-    return <div className="text-center py-12">Loading...</div>;
+    return (
+      <div className="h-screen bg-gradient-to-br from-blue-50 via-blue-100 to-blue-200 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="mx-auto w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-700 rounded-xl flex items-center justify-center shadow-lg animate-pulse">
+            <TrendingUp size={40} strokeWidth={2} className="text-white" />
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-xl font-bold text-gray-900">HDB Analytics</h3>
+            <p className="text-sm text-gray-600">
+              Preparing your experience...
+            </p>
+          </div>
+        </div>
+      </div>
+    );
 
   const features = [
     {
@@ -62,8 +76,7 @@ export default function LoginPage() {
         <div className="hidden md:block space-y-4">
           <div className="space-y-2">
             <Badge className="bg-blue-100 text-blue-700 border-blue-200">
-              <Home className="h-3 w-3 mr-1" />
-              HDB Analytics
+              <TrendingUp /> HDB Analytics
             </Badge>
             <h1 className="text-3xl font-bold text-gray-900 tracking-tight leading-tight">
               Smart HDB Resale
@@ -141,7 +154,7 @@ export default function LoginPage() {
           <Card className="w-full max-w-md border-gray-200 shadow-2xl bg-white">
             <CardHeader className="space-y-2 pt-5 pb-2">
               <div className="mx-auto w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-700 rounded-xl flex items-center justify-center shadow-lg">
-                <Home className="h-6 w-6 text-white" />
+                <TrendingUp size={32} strokeWidth={2} className="text-white" />
               </div>
               <div className="text-center space-y-1">
                 <h2 className="text-2xl font-bold text-gray-900">
