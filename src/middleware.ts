@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
 import type { NextRequest } from "next/server";
 
 export async function middleware(req: NextRequest) {
@@ -9,19 +8,20 @@ export async function middleware(req: NextRequest) {
   const protectedPaths = ["/dashboard", "/subscription"];
   const isProtected = protectedPaths.some((path) => pathname.startsWith(path));
 
-  // Get JWT token from cookies
-  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+  // Check for Auth.js session token cookie
+  const sessionToken =
+    req.cookies.get("__Secure-authjs.session-token")?.value ||
+    req.cookies.get("authjs.session-token")?.value; // Fallback for non-HTTPS
 
-  console.log("TOKEN CHECK:", token);
-  console.log("SECRET CHECK:", process.env.NEXTAUTH_SECRET);
+  console.log("SESSION TOKEN:", sessionToken ? "EXISTS" : "NULL");
 
   // No token - redirect to /login
-  if (isProtected && !token) {
+  if (isProtected && !sessionToken) {
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
   // Already logged in - prevent access to /login
-  if (pathname === "/login" && token) {
+  if (pathname === "/login" && sessionToken) {
     return NextResponse.redirect(new URL("/dashboard", req.url));
   }
 
@@ -29,5 +29,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard", "/subscription"],
+  matcher: ["/dashboard/:path*", "/subscription/:path*", "/login"],
 };
