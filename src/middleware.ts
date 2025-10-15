@@ -13,8 +13,6 @@ export async function middleware(req: NextRequest) {
     req.cookies.get("__Secure-authjs.session-token")?.value ||
     req.cookies.get("authjs.session-token")?.value; // Fallback for non-HTTPS
 
-  console.log("SESSION TOKEN:", sessionToken ? "EXISTS" : "NULL");
-
   // No token - redirect to /login
   if (isProtected && !sessionToken) {
     return NextResponse.redirect(new URL("/login", req.url));
