@@ -22,6 +22,7 @@ import {
   Layers,
   Grid3x3,
   Map,
+  Lock,
 } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import {
@@ -52,6 +53,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Filters } from "@/type";
+import { cn } from "@/lib/utils";
+import { PremiumFeatureDialog } from "./premiumFeatureDialog";
 
 export function Navbar() {
   const { data: session } = useSession();
@@ -89,8 +92,8 @@ export function Navbar() {
           {/* User Menu or Login Button */}
           {session ? (
             <DropdownMenu>
-              <DropdownMenuTrigger className="flex gap-2 items-center cursor-pointer">
-                <Avatar className="h-8 w-8">
+              <DropdownMenuTrigger>
+                <Avatar>
                   <AvatarImage src={userImage} alt={userName} />
                   <AvatarFallback>
                     {userName.charAt(0).toUpperCase()}
@@ -147,6 +150,7 @@ export function DashboardNavbar({
   const setAskingPrice = useSetAtom(askingPriceAtom);
   const [savedFilters, setSavedFilters] = useAtom(savedFiltersAtom);
   const [openSavedFilters, setOpenSavedFilters] = useState(false);
+  const [openPremiumDialog, setOpenPremiumDialog] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [filterToDelete, setFilterToDelete] = useState<{
     id: string;
@@ -156,6 +160,7 @@ export function DashboardNavbar({
   const user = session?.user;
   const userName = user?.name ?? "User";
   const userImage = user?.image ?? "https://i.pravatar.cc/32";
+  const isPremium = user?.role == "PREMIUM" || false;
 
   useEffect(() => {
     if (session) {
@@ -192,6 +197,14 @@ export function DashboardNavbar({
     } finally {
       setDeletingId(null);
       setFilterToDelete(null);
+    }
+  };
+
+  const handleViewModeChange = (mode: "grid" | "map") => {
+    if (mode === "map" && !isPremium) {
+      setOpenPremiumDialog(true);
+    } else {
+      onViewModeChange(mode);
     }
   };
 
@@ -260,21 +273,29 @@ export function DashboardNavbar({
               Resale Viewer
             </Link>
 
+            {/* View Mode Toggle */}
             <div className="flex items-center justify-center">
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
                 <Button
                   variant={viewMode === "grid" ? "default" : "ghost"}
                   size="sm"
-                  onClick={() => onViewModeChange("grid")}
+                  onClick={() => handleViewModeChange("grid")}
+                  className={viewMode === "grid" ? "" : "hover:bg-gray-200"}
                 >
                   <Grid3x3 size={16} /> Grid
                 </Button>
                 <Button
                   variant={viewMode === "map" ? "default" : "ghost"}
                   size="sm"
-                  onClick={() => onViewModeChange("map")}
+                  onClick={() => handleViewModeChange("map")}
+                  className={cn(
+                    viewMode === "map" ? "" : "hover:bg-gray-200",
+                    !isPremium &&
+                      "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+                  )}
                 >
-                  <Map size={16} /> Map
+                  {isPremium ? <Map size={16} /> : <Lock size={16} />}
+                  Map
                 </Button>
               </div>
             </div>
@@ -526,6 +547,12 @@ export function DashboardNavbar({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Premium Map Feature Dialog */}
+      <PremiumFeatureDialog
+        openPremiumDialog={openPremiumDialog}
+        setOpenPremiumDialog={setOpenPremiumDialog}
+      />
     </>
   );
 }

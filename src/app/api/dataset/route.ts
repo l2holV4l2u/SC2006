@@ -2,6 +2,7 @@ import { parse, isAfter, isBefore } from "date-fns";
 import { NextResponse } from "next/server";
 import { Property } from "@/type";
 import { getCache, parseRemainingLease } from "@/lib/dataset";
+import { auth } from "@/lib/auth";
 
 // Helper to parse storey range and get midpoint
 function getStoreyMidpoint(storeyRange: string): number {
@@ -32,6 +33,13 @@ function storeyInRange(
 
 export async function GET(req: Request) {
   try {
+    const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const isPremium = session.user.role === "PREMIUM";
+
     const { searchParams } = new URL(req.url);
 
     // Basic filters
@@ -135,6 +143,25 @@ export async function GET(req: Request) {
           remaining_lease_years: latestTrend.remaining_lease_years,
           trend: trendsInRange,
         });
+      }
+    }
+
+    // Limit to 3 years of trend data for free users
+    console.log(isPremium);
+    if (!isPremium) {
+      const { parse, subYears } = await import("date-fns");
+      const cutoffDate = subYears(new Date(), 3);
+
+      filtered.forEach((prop) => {
+        prop.trend = prop.trend.filter((t) => {
+          const d = parse(t.date, "yyyy-MM", new Date());
+          return d >= cutoffDate;
+        });
+      });
+
+      // Remove properties with no remaining trend data
+      for (let i = filtered.length - 1; i >= 0; i--) {
+        if (filtered[i].trend.length === 0) filtered.splice(i, 1);
       }
     }
 

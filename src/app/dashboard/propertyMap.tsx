@@ -234,84 +234,82 @@ export function PropertyMap() {
   const stats = hoveredTown && townData[hoveredTown.toLowerCase()];
 
   return (
-    <Card className="overflow-hidden shadow-lg">
-      <div className="relative h-[600px]">
-        <div ref={mapRef} className="w-full h-full rounded-xl" />
+    <div className="relative h-[600px]">
+      <div ref={mapRef} className="w-full h-full rounded-xl" />
 
-        {hoveredTown && stats && (
-          <div className="absolute top-4 right-4 w-80 bg-white/95 backdrop-blur-sm rounded-xl shadow-2xl border border-gray-200 p-5 z-[1000] animate-in fade-in slide-in-from-top-2 duration-200">
-            <div className="space-y-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <h3 className="font-semibold text-lg text-gray-900">
-                    {hoveredTown}
-                  </h3>
-                  <p className="text-sm text-gray-500">
-                    {stats.count} properties
-                  </p>
-                </div>
-                {getTrendIcon(stats.trend)}
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <p className="text-xs text-gray-500 font-medium">Avg Price</p>
-                  <p className="text-xl font-bold text-gray-900">
-                    ${(stats.avgPrice / 1000).toFixed(0)}k
-                  </p>
-                  <p className="text-xs text-gray-600 font-medium">
-                    {getPriceTrend(stats.trend)}
-                  </p>
-                </div>
-
-                <div className="space-y-1">
-                  <p className="text-xs text-gray-500 font-medium">Avg Area</p>
-                  <p className="text-xl font-bold text-gray-900">
-                    {stats.avgArea.toFixed(0)} m²
-                  </p>
-                </div>
-              </div>
-
-              <div className="pt-3 border-t border-gray-100">
-                <p className="text-xs text-gray-500 font-medium mb-2">
-                  Price Trend
+      {hoveredTown && stats && (
+        <div className="absolute top-4 right-4 w-80 bg-white/95 backdrop-blur-sm rounded-xl shadow-2xl border border-gray-200 p-5 z-[1000] animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="space-y-4">
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="font-semibold text-lg text-gray-900">
+                  {hoveredTown}
+                </h3>
+                <p className="text-sm text-gray-500">
+                  {stats.count} properties
                 </p>
-                <div className="flex items-end gap-1 h-16">
-                  {stats.trend.slice(-8).map((point, i) => {
-                    const max = Math.max(...stats.trend.map((t) => t.avgPrice));
-                    const height = (point.avgPrice / max) * 100;
-                    return (
-                      <div
-                        key={i}
-                        className="flex-1 bg-gradient-to-t from-blue-500 to-blue-400 rounded-t transition-all hover:from-blue-600 hover:to-blue-500"
-                        style={{ height: `${height}%` }}
-                        title={`${
-                          point.date
-                        }: $${point.avgPrice.toLocaleString()}`}
-                      />
-                    );
-                  })}
-                </div>
+              </div>
+              {getTrendIcon(stats.trend)}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <p className="text-xs text-gray-500 font-medium">Avg Price</p>
+                <p className="text-xl font-bold text-gray-900">
+                  ${(stats.avgPrice / 1000).toFixed(0)}k
+                </p>
+                <p className="text-xs text-gray-600 font-medium">
+                  {getPriceTrend(stats.trend)}
+                </p>
               </div>
 
-              <p className="text-xs text-gray-400 italic text-center pt-2 border-t border-gray-100">
-                Click to filter by this town
-              </p>
+              <div className="space-y-1">
+                <p className="text-xs text-gray-500 font-medium">Avg Area</p>
+                <p className="text-xl font-bold text-gray-900">
+                  {stats.avgArea.toFixed(0)} m²
+                </p>
+              </div>
             </div>
-          </div>
-        )}
 
-        {loading && (
-          <div className="absolute inset-0 bg-white/90 backdrop-blur-sm flex items-center justify-center z-[1000]">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-3" />
-              <p className="text-sm text-gray-600 font-medium">
-                Loading map data...
+            <div className="pt-3 border-t border-gray-100">
+              <p className="text-xs text-gray-500 font-medium mb-2">
+                Price Trend
               </p>
+              <div className="flex items-end gap-1 h-16">
+                {stats.trend.slice(-8).map((point, i) => {
+                  const max = Math.max(...stats.trend.map((t) => t.avgPrice));
+                  const height = (point.avgPrice / max) * 100;
+                  return (
+                    <div
+                      key={i}
+                      className="flex-1 bg-gradient-to-t from-blue-500 to-blue-400 rounded-t transition-all hover:from-blue-600 hover:to-blue-500"
+                      style={{ height: `${height}%` }}
+                      title={`${
+                        point.date
+                      }: $${point.avgPrice.toLocaleString()}`}
+                    />
+                  );
+                })}
+              </div>
             </div>
+
+            <p className="text-xs text-gray-400 italic text-center pt-2 border-t border-gray-100">
+              Click to filter by this town
+            </p>
           </div>
-        )}
-      </div>
-    </Card>
+        </div>
+      )}
+
+      {loading && (
+        <div className="absolute inset-0 bg-white/90 backdrop-blur-sm flex items-center justify-center z-[1000]">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-3" />
+            <p className="text-sm text-gray-600 font-medium">
+              Loading map data...
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

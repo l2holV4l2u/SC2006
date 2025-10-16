@@ -21,6 +21,8 @@ import {
   Save,
   Loader2,
   ArrowUpRight,
+  Lock,
+  AlertCircle,
 } from "lucide-react";
 import {
   Dialog,
@@ -41,6 +43,8 @@ import {
 } from "@/lib/propertyAtom";
 import { toast } from "sonner";
 import type { FairnessOutput, Filters } from "@/type";
+import { useSession } from "next-auth/react";
+import { PremiumFeatureDialog } from "@/components/custom/premiumFeatureDialog";
 
 export function FilterSection({
   total,
@@ -51,6 +55,9 @@ export function FilterSection({
   loading: boolean;
   onFilter: (filters: Filters) => void;
 }) {
+  const { data: session } = useSession();
+  const isPremium = session?.user?.role == "PREMIUM" || false;
+
   const setSavedFilters = useSetAtom(savedFiltersAtom);
   const setFairnessMap = useSetAtom(fairnessMapAtom);
   const [askingPrice, setAskingPrice] = useAtom(askingPriceAtom);
@@ -61,6 +68,7 @@ export function FilterSection({
   const [draftFilters, setDraftFilters] = useState<Filters>(filters);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [openSaveDialog, setOpenSaveDialog] = useState(false);
+  const [openPremiumDialog, setOpenPremiumDialog] = useState(false);
   const [analyzingFairness, setAnalyzingFairness] = useState(false);
   const [filterName, setFilterName] = useState("");
 
@@ -68,6 +76,29 @@ export function FilterSection({
   useEffect(() => {
     setDraftFilters(filters);
   }, [filters]);
+
+  // --- Date Validation Helper ---
+  const isValidDateRange = useMemo(() => {
+    const { yearFrom, monthFrom, yearTo, monthTo } = draftFilters;
+
+    // If either range is not set, it's valid (no restriction)
+    if (!yearFrom && !monthFrom) return true;
+    if (!yearTo && !monthTo) return true;
+
+    // If only partial dates are set, consider it valid
+    if (!yearFrom || !yearTo) return true;
+
+    const fromYear = parseInt(yearFrom);
+    const toYear = parseInt(yearTo);
+    const fromMonth = monthFrom ? parseInt(monthFrom) : 1;
+    const toMonth = monthTo ? parseInt(monthTo) : 12;
+
+    // Compare dates
+    if (fromYear > toYear) return false;
+    if (fromYear === toYear && fromMonth > toMonth) return false;
+
+    return true;
+  }, [draftFilters]);
 
   // --- Helpers ---
   const handleChange = (field: keyof Filters, value: string) =>
@@ -83,6 +114,11 @@ export function FilterSection({
   };
 
   const handleSaveFilter = async () => {
+    if (!isValidDateRange) {
+      toast.error("Invalid date range: 'From' date must be before 'To' date");
+      return;
+    }
+
     try {
       const res = await fetch("/api/saved-filters", {
         method: "POST",
@@ -146,6 +182,23 @@ export function FilterSection({
     } finally {
       setAnalyzingFairness(false);
     }
+  };
+
+  const handleAdvancedToggle = () => {
+    if (!isPremium) {
+      setOpenPremiumDialog(true);
+    } else {
+      setShowAdvanced((p) => !p);
+    }
+  };
+
+  const handleApplyFilters = () => {
+    if (!isValidDateRange) {
+      toast.error("Invalid date range: 'From' date must be before 'To' date");
+      return;
+    }
+    setFilters(draftFilters);
+    onFilter(draftFilters);
   };
 
   // --- UI Data ---
@@ -337,20 +390,28 @@ export function FilterSection({
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => setShowAdvanced((p) => !p)}
-          className="text-primary hover:text-primary-700 hover:bg-primary-50 -ml-2"
+          onClick={handleAdvancedToggle}
+          className={`-ml-2 ${
+            isPremium
+              ? "text-primary hover:text-primary-700 hover:bg-primary-50"
+              : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+          }`}
         >
-          {showAdvanced ? (
-            <ChevronUp className="h-4 w-4 mr-1" />
+          {isPremium ? (
+            showAdvanced ? (
+              <ChevronUp size={16} />
+            ) : (
+              <ChevronDown size={16} />
+            )
           ) : (
-            <ChevronDown className="h-4 w-4 mr-1" />
+            <Lock size={16} />
           )}
           Advanced Filters
         </Button>
       </div>
 
       {/* Advanced Filters */}
-      {showAdvanced && (
+      {showAdvanced && isPremium && (
         <>
           <Separator />
           <div className="px-6 py-4 bg-gradient-to-br from-gray-50 to-white space-y-6">
@@ -460,6 +521,17 @@ export function FilterSection({
               </div>
             </div>
 
+            {/* Date Range Validation Warning */}
+            {!isValidDateRange && (
+              <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                <AlertCircle size={16} className="flex-shrink-0" />
+                <span>
+                  Invalid date range: The 'From' date must be before the 'To'
+                  date
+                </span>
+              </div>
+            )}
+
             {/* Area / Storey */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-3">
@@ -551,7 +623,7 @@ export function FilterSection({
                     <div className="text-gray-600">Asking Price:</div>
                     <div className="font-medium text-gray-900">
                       {askingPrice
-                        ? `$${Number(askingPrice).toLocaleString()}`
+                        ? `${Number(askingPrice).toLocaleString()}`
                         : "Any"}
                     </div>
                   </div>
@@ -604,6 +676,13 @@ export function FilterSection({
                   </div>
                 </div>
               </div>
+
+              {!isValidDateRange && (
+                <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                  <AlertCircle size={16} className="flex-shrink-0" />
+                  <span>Please fix the invalid date range before saving</span>
+                </div>
+              )}
             </div>
 
             <DialogFooter>
@@ -613,7 +692,10 @@ export function FilterSection({
               >
                 Cancel
               </Button>
-              <Button onClick={handleSaveFilter} disabled={!filterName.trim()}>
+              <Button
+                onClick={handleSaveFilter}
+                disabled={!filterName.trim() || !isValidDateRange}
+              >
                 Save Filter
               </Button>
             </DialogFooter>
@@ -635,17 +717,20 @@ export function FilterSection({
           )}
           <Button
             size="sm"
-            onClick={() => {
-              setFilters(draftFilters);
-              onFilter(draftFilters);
-            }}
-            disabled={loading}
+            onClick={handleApplyFilters}
+            disabled={loading || !isValidDateRange}
           >
             <Filter size={16} />
             Apply Filters
           </Button>
         </div>
       </div>
+
+      {/* Premium Upgrade Dialog */}
+      <PremiumFeatureDialog
+        openPremiumDialog={openPremiumDialog}
+        setOpenPremiumDialog={setOpenPremiumDialog}
+      />
     </div>
   );
 }
