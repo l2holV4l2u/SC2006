@@ -92,7 +92,7 @@ export function Navbar() {
           {/* User Menu or Login Button */}
           {session ? (
             <DropdownMenu>
-              <DropdownMenuTrigger>
+              <DropdownMenuTrigger className="flex gap-4 items-center">
                 <Avatar>
                   <AvatarImage src={userImage} alt={userName} />
                   <AvatarFallback>

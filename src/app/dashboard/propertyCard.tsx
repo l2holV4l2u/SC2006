@@ -2,7 +2,14 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, TrendingDown, Minus, Info, Download } from "lucide-react";
+import {
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  Info,
+  Download,
+  Loader2,
+} from "lucide-react";
 import {
   ResponsiveContainer,
   LineChart,
@@ -13,16 +20,16 @@ import {
   CartesianGrid,
 } from "recharts";
 import { toTitleCase } from "@/lib/utils";
-import { Property, FairnessOutput } from "@/type";
+import { Property } from "@/type";
 import * as XLSX from "xlsx";
+import { useAtomValue } from "jotai";
+import { fairnessLoadingAtom, fairnessMapAtom } from "@/lib/propertyAtom";
 
-export function PropertyCard({
-  property,
-  fairness,
-}: {
-  property: Property;
-  fairness?: FairnessOutput;
-}) {
+export function PropertyCard({ property }: { property: Property }) {
+  const fairnessLoading = useAtomValue(fairnessLoadingAtom);
+  const fairnessMap = useAtomValue(fairnessMapAtom);
+  const fairness = fairnessMap[property.id];
+
   const getBadge = (label: string) => {
     switch (label) {
       case "Advantageous":
@@ -103,7 +110,13 @@ export function PropertyCard({
             {property.floor_area_sqm.toFixed(2)} m² •{" "}
             {property.remaining_lease_years}
           </p>
-          {fairness && getBadge(fairness.label)}
+          {fairnessLoading ? (
+            <Badge className="text-white">
+              <Loader2 className="animate-spin" /> Loading
+            </Badge>
+          ) : (
+            fairness && getBadge(fairness.label)
+          )}
         </div>
         <Button
           variant="outline"

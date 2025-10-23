@@ -32,12 +32,15 @@ import {
   DialogFooter,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { useAtom, useSetAtom } from "jotai";
 import {
   askingPriceAtom,
   defaultFilters,
+  fairnessLoadingAtom,
   fairnessMapAtom,
   filtersAtom,
+  loadingAtom,
+  paginationAtom,
   propertyAtom,
   savedFiltersAtom,
 } from "@/lib/propertyAtom";
@@ -45,47 +48,41 @@ import { toast } from "sonner";
 import type { FairnessOutput, Filters } from "@/type";
 import { useSession } from "next-auth/react";
 import { PremiumFeatureDialog } from "@/components/custom/premiumFeatureDialog";
+import { parseRemainingLease } from "@/lib/dataset";
 
-export function FilterSection({
-  total,
-  loading,
-  onFilter,
-}: {
-  total: number;
-  loading: boolean;
-  onFilter: (filters: Filters) => void;
-}) {
+export function FilterSection() {
   const { data: session } = useSession();
   const isPremium = session?.user?.role == "PREMIUM" || false;
 
   const setSavedFilters = useSetAtom(savedFiltersAtom);
-  const setFairnessMap = useSetAtom(fairnessMapAtom);
   const [askingPrice, setAskingPrice] = useAtom(askingPriceAtom);
-  const property = useAtomValue(propertyAtom);
   const [filters, setFilters] = useAtom(filtersAtom);
+  const [loading, setLoading] = useAtom(loadingAtom);
+  const [pagination, setPagination] = useAtom(paginationAtom);
+  const [property, setProperty] = useAtom(propertyAtom);
+  const [fairnessLoading, setFairnessLoading] = useAtom(fairnessLoadingAtom);
+  const setFairnessMap = useSetAtom(fairnessMapAtom);
 
-  // Local state for draft filters (not applied until user clicks Apply)
-  const [draftFilters, setDraftFilters] = useState<Filters>(filters);
+  // Local state for editing filters before applying
+  const [localFilters, setLocalFilters] = useState<Filters>(filters);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [openSaveDialog, setOpenSaveDialog] = useState(false);
   const [openPremiumDialog, setOpenPremiumDialog] = useState(false);
-  const [analyzingFairness, setAnalyzingFairness] = useState(false);
   const [filterName, setFilterName] = useState("");
 
-  // Sync draftFilters when filters atom changes (e.g., from saved filter selection)
+  useEffect(() => setLocalFilters(filters), [filters]);
+
+  // Fetch properties only when pagination changes (not on filter changes)
   useEffect(() => {
-    setDraftFilters(filters);
-  }, [filters]);
+    fetchProperties();
+  }, [pagination.page]);
 
-  // --- Date Validation Helper ---
+  // Date Validation Helper
   const isValidDateRange = useMemo(() => {
-    const { yearFrom, monthFrom, yearTo, monthTo } = draftFilters;
+    const { yearFrom, monthFrom, yearTo, monthTo } = localFilters;
 
-    // If either range is not set, it's valid (no restriction)
     if (!yearFrom && !monthFrom) return true;
     if (!yearTo && !monthTo) return true;
-
-    // If only partial dates are set, consider it valid
     if (!yearFrom || !yearTo) return true;
 
     const fromYear = parseInt(yearFrom);
@@ -93,25 +90,15 @@ export function FilterSection({
     const fromMonth = monthFrom ? parseInt(monthFrom) : 1;
     const toMonth = monthTo ? parseInt(monthTo) : 12;
 
-    // Compare dates
     if (fromYear > toYear) return false;
     if (fromYear === toYear && fromMonth > toMonth) return false;
 
     return true;
-  }, [draftFilters]);
+  }, [localFilters]);
 
-  // --- Helpers ---
+  // Helpers
   const handleChange = (field: keyof Filters, value: string) =>
-    setDraftFilters((prev) => ({ ...prev, [field]: value }));
-
-  const parseRemainingLease = (leaseStr: string): number => {
-    if (!leaseStr) return 0;
-    const yearsMatch = leaseStr.match(/(\d+)\s*years?/i);
-    const monthsMatch = leaseStr.match(/(\d+)\s*months?/i);
-    const years = yearsMatch ? parseInt(yearsMatch[1]) : 0;
-    const months = monthsMatch ? parseInt(monthsMatch[1]) : 0;
-    return years + months / 12;
-  };
+    setLocalFilters((prev) => ({ ...prev, [field]: value }));
 
   const handleSaveFilter = async () => {
     if (!isValidDateRange) {
@@ -125,7 +112,7 @@ export function FilterSection({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: filterName,
-          filters: { ...draftFilters, askingPrice },
+          filters: { ...localFilters, askingPrice },
         }),
       });
 
@@ -143,10 +130,71 @@ export function FilterSection({
     }
   };
 
-  const handleAnalyzeFairness = async () => {
-    setAnalyzingFairness(true);
+  const handleAdvancedToggle = () => {
+    if (!isPremium) setOpenPremiumDialog(true);
+    else setShowAdvanced((p) => !p);
+  };
+
+  const handleApplyFilters = async () => {
+    if (!isValidDateRange) {
+      toast.error("Invalid date range: 'From' date must be before 'To' date");
+      return;
+    }
+
+    // Apply the local filters to the atom
+    setFilters(localFilters);
+
+    // Reset to page 1 when applying new filters
+    setPagination((prev) => ({ ...prev, page: 1 }));
+
+    // Fetch properties with new filters
+    await fetchProperties();
+  };
+
+  const fetchProperties = async () => {
+    setLoading(true);
     try {
-      const subjects = property.map((p) => ({
+      const params = new URLSearchParams({
+        ...Object.fromEntries(
+          Object.entries(localFilters).filter(([_, v]) => v)
+        ),
+        page: pagination.page.toString(),
+        itemsPerPage: "9",
+      });
+      const res = await fetch(`/api/dataset?${params.toString()}`);
+      const data = await res.json();
+
+      const fetchedProperties = data.data || [];
+      setProperty(fetchedProperties);
+      setPagination((prev) => ({
+        ...prev,
+        total: data.total || 0,
+        totalPages: data.totalPages || 1,
+      }));
+
+      // Run fairness analysis after properties are fetched
+      if (
+        askingPrice &&
+        Number(askingPrice) > 0 &&
+        fetchedProperties.length > 0
+      ) {
+        await analyzeFairness(fetchedProperties);
+      }
+    } catch (error) {
+      console.error("Error fetching properties:", error);
+      setProperty([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const analyzeFairness = async (properties: typeof property) => {
+    if (!askingPrice || Number(askingPrice) <= 0 || properties.length === 0) {
+      return;
+    }
+
+    try {
+      const subjects = properties.map((p) => ({
         town: p.town,
         flat_type: p.flatType,
         floor_area_sqm: p.floor_area_sqm,
@@ -154,6 +202,7 @@ export function FilterSection({
         asking_price: askingPrice,
         id: p.id,
       }));
+
       const response = await fetch("/api/fairness", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -179,26 +228,21 @@ export function FilterSection({
       }
     } catch (error) {
       console.error("Error during fairness analysis:", error);
-    } finally {
-      setAnalyzingFairness(false);
     }
   };
 
-  const handleAdvancedToggle = () => {
-    if (!isPremium) {
-      setOpenPremiumDialog(true);
+  const handleAnalyzeFairness = async () => {
+    setFairnessLoading(true);
+    if (property.length > 0) {
+      await analyzeFairness(property);
     } else {
-      setShowAdvanced((p) => !p);
+      toast.error("No properties to analyze. Apply filters first.");
     }
+    setFairnessLoading(false);
   };
 
-  const handleApplyFilters = () => {
-    if (!isValidDateRange) {
-      toast.error("Invalid date range: 'From' date must be before 'To' date");
-      return;
-    }
-    setFilters(draftFilters);
-    onFilter(draftFilters);
+  const handleResetFilters = () => {
+    setLocalFilters(defaultFilters);
   };
 
   // --- UI Data ---
@@ -228,13 +272,13 @@ export function FilterSection({
 
   const hasActiveFilters = useMemo(
     () =>
-      Object.entries(draftFilters).some(
+      Object.entries(localFilters).some(
         ([k, v]) => v && v !== defaultFilters[k as keyof Filters]
       ),
-    [draftFilters]
+    [localFilters]
   );
 
-  // --- Render ---
+  // Render
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
       {/* Header */}
@@ -246,7 +290,7 @@ export function FilterSection({
           </h2>
         </div>
         <div className="text-right text-gray-600">
-          <strong>{total}</strong> properties found
+          <strong>{pagination.total}</strong> properties found
         </div>
       </div>
 
@@ -266,10 +310,21 @@ export function FilterSection({
                   $
                 </div>
                 <Input
-                  type="number"
+                  type="text"
+                  inputMode="decimal"
                   placeholder="e.g. 500000"
                   value={askingPrice}
-                  onChange={(e) => setAskingPrice(e.target.value)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value === "" || /^\d*\.?\d*$/.test(value)) {
+                      setAskingPrice(value);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (["e", "E", "+", "-"].includes(e.key)) {
+                      e.preventDefault();
+                    }
+                  }}
                   className="pl-7"
                 />
               </div>
@@ -277,10 +332,11 @@ export function FilterSection({
               <Button
                 size="icon"
                 onClick={handleAnalyzeFairness}
-                disabled={analyzingFairness}
+                disabled={loading || !askingPrice || Number(askingPrice) <= 0}
                 className="aspect-square"
+                title="Analyze fairness of current properties"
               >
-                {analyzingFairness ? (
+                {loading || fairnessLoading ? (
                   <Loader2 className="animate-spin" size={16} />
                 ) : (
                   <ArrowUpRight size={16} />
@@ -293,7 +349,7 @@ export function FilterSection({
           <div className="space-y-2">
             <div className="text-sm font-medium text-gray-700">Town</div>
             <Select
-              value={draftFilters.town || "all"}
+              value={localFilters.town || "all"}
               onValueChange={(v) => handleChange("town", v === "all" ? "" : v)}
             >
               <SelectTrigger>
@@ -342,7 +398,7 @@ export function FilterSection({
           <div className="space-y-2">
             <div className="text-sm font-medium text-gray-700">Flat Type</div>
             <Select
-              value={draftFilters.flatType || "all"}
+              value={localFilters.flatType || "all"}
               onValueChange={(v) =>
                 handleChange("flatType", v === "all" ? "" : v)
               }
@@ -353,6 +409,7 @@ export function FilterSection({
               <SelectContent>
                 {[
                   "all",
+                  "1 Room",
                   "2 Room",
                   "3 Room",
                   "4 Room",
@@ -371,7 +428,7 @@ export function FilterSection({
           <div className="space-y-2">
             <div className="text-sm font-medium text-gray-700">Sort By</div>
             <Select
-              value={draftFilters.sortBy}
+              value={localFilters.sortBy}
               onValueChange={(v) => handleChange("sortBy", v)}
             >
               <SelectTrigger>
@@ -425,7 +482,7 @@ export function FilterSection({
                   <div className="space-y-2">
                     <div className="text-xs text-gray-600">Year</div>
                     <Select
-                      value={draftFilters.yearFrom || "any"}
+                      value={localFilters.yearFrom || "any"}
                       onValueChange={(v) =>
                         handleChange("yearFrom", v === "any" ? "" : v)
                       }
@@ -447,7 +504,7 @@ export function FilterSection({
                   <div className="space-y-2">
                     <div className="text-xs text-gray-600">Month</div>
                     <Select
-                      value={draftFilters.monthFrom || "any"}
+                      value={localFilters.monthFrom || "any"}
                       onValueChange={(v) =>
                         handleChange("monthFrom", v === "any" ? "" : v)
                       }
@@ -477,7 +534,7 @@ export function FilterSection({
                   <div className="space-y-2">
                     <div className="text-xs text-gray-600">Year</div>
                     <Select
-                      value={draftFilters.yearTo || "any"}
+                      value={localFilters.yearTo || "any"}
                       onValueChange={(v) =>
                         handleChange("yearTo", v === "any" ? "" : v)
                       }
@@ -499,7 +556,7 @@ export function FilterSection({
                   <div className="space-y-2">
                     <div className="text-xs text-gray-600">Month</div>
                     <Select
-                      value={draftFilters.monthTo || "any"}
+                      value={localFilters.monthTo || "any"}
                       onValueChange={(v) =>
                         handleChange("monthTo", v === "any" ? "" : v)
                       }
@@ -540,7 +597,7 @@ export function FilterSection({
                     Floor Area
                   </div>
                   <div className="text-xs text-gray-600">
-                    {draftFilters.minArea} - {draftFilters.maxArea} sqm
+                    {localFilters.minArea} - {localFilters.maxArea} sqm
                   </div>
                 </div>
                 <Slider
@@ -548,8 +605,8 @@ export function FilterSection({
                   max={250}
                   step={5}
                   value={[
-                    Number(draftFilters.minArea),
-                    Number(draftFilters.maxArea),
+                    Number(localFilters.minArea),
+                    Number(localFilters.maxArea),
                   ]}
                   onValueChange={([min, max]) => {
                     handleChange("minArea", min.toString());
@@ -564,7 +621,7 @@ export function FilterSection({
                     Storey Range
                   </div>
                   <div className="text-xs text-gray-600">
-                    Level {draftFilters.minStorey} - {draftFilters.maxStorey}
+                    Level {localFilters.minStorey} - {localFilters.maxStorey}
                   </div>
                 </div>
                 <Slider
@@ -572,8 +629,8 @@ export function FilterSection({
                   max={50}
                   step={1}
                   value={[
-                    Number(draftFilters.minStorey),
-                    Number(draftFilters.maxStorey),
+                    Number(localFilters.minStorey),
+                    Number(localFilters.maxStorey),
                   ]}
                   onValueChange={([min, max]) => {
                     handleChange("minStorey", min.toString());
@@ -631,32 +688,32 @@ export function FilterSection({
                   <div className="flex justify-between text-sm">
                     <div className="text-gray-600">Town:</div>
                     <div className="font-medium text-gray-900">
-                      {draftFilters.town || "All Towns"}
+                      {localFilters.town || "All Towns"}
                     </div>
                   </div>
 
                   <div className="flex justify-between text-sm">
                     <div className="text-gray-600">Flat Type:</div>
                     <div className="font-medium text-gray-900">
-                      {draftFilters.flatType || "All Types"}
+                      {localFilters.flatType || "All Types"}
                     </div>
                   </div>
 
                   <div className="flex justify-between text-sm">
                     <div className="text-gray-600">Transaction Period:</div>
                     <div className="font-medium text-gray-900">
-                      {draftFilters.yearFrom || draftFilters.monthFrom
+                      {localFilters.yearFrom || localFilters.monthFrom
                         ? `${
                             months.find(
-                              (m) => m.value === draftFilters.monthFrom
+                              (m) => m.value === localFilters.monthFrom
                             )?.label || ""
-                          } ${draftFilters.yearFrom || ""}`
+                          } ${localFilters.yearFrom || ""}`
                         : "Any"}
-                      {draftFilters.yearTo || draftFilters.monthTo
+                      {localFilters.yearTo || localFilters.monthTo
                         ? ` - ${
-                            months.find((m) => m.value === draftFilters.monthTo)
+                            months.find((m) => m.value === localFilters.monthTo)
                               ?.label || ""
-                          } ${draftFilters.yearTo || ""}`
+                          } ${localFilters.yearTo || ""}`
                         : ""}
                     </div>
                   </div>
@@ -664,14 +721,14 @@ export function FilterSection({
                   <div className="flex justify-between text-sm">
                     <div className="text-gray-600">Floor Area:</div>
                     <div className="font-medium text-gray-900">
-                      {draftFilters.minArea} - {draftFilters.maxArea} sqm
+                      {localFilters.minArea} - {localFilters.maxArea} sqm
                     </div>
                   </div>
 
                   <div className="flex justify-between text-sm">
                     <div className="text-gray-600">Storey Range:</div>
                     <div className="font-medium text-gray-900">
-                      Level {draftFilters.minStorey} - {draftFilters.maxStorey}
+                      Level {localFilters.minStorey} - {localFilters.maxStorey}
                     </div>
                   </div>
                 </div>
@@ -707,7 +764,7 @@ export function FilterSection({
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setDraftFilters(defaultFilters)}
+              onClick={handleResetFilters}
               disabled={loading}
               className="text-gray-600 hover:text-gray-900"
             >

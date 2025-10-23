@@ -22,3 +22,10 @@ export const filtersAtom = atom<Filters>(defaultFilters);
 export const savedFiltersAtom = atom<SavedFilter[]>([]);
 export const fairnessMapAtom = atom<Record<string, FairnessOutput>>({});
 export const askingPriceAtom = atom("0");
+export const loadingAtom = atom(false);
+export const fairnessLoadingAtom = atom(false);
+export const paginationAtom = atom({
+  page: 1,
+  total: 0,
+  totalPages: 1,
+});
