@@ -2,42 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useSetAtom } from "jotai";
 import { filtersAtom } from "@/lib/propertyAtom";
+import { towns } from "@/lib/const";
 import type { Property } from "@/type";
-
-// Singapore town center coordinates for better map positioning
-const townCenters: Record<string, [number, number]> = {
-  "Ang Mo Kio": [1.3691, 103.8454],
-  Bedok: [1.3236, 103.9273],
-  Bishan: [1.3521, 103.8398],
-  "Bukit Batok": [1.359, 103.7537],
-  "Bukit Merah": [1.2816, 103.8118],
-  "Bukit Panjang": [1.3774, 103.7632],
-  "Bukit Timah": [1.3294, 103.791],
-  "Central Area": [1.2897, 103.8501],
-  "Choa Chu Kang": [1.384, 103.747],
-  Clementi: [1.3162, 103.7649],
-  Geylang: [1.3201, 103.8918],
-  Hougang: [1.3612, 103.8863],
-  "Jurong East": [1.3329, 103.7436],
-  "Jurong West": [1.3404, 103.709],
-  "Kallang/Whampoa": [1.3104, 103.8654],
-  "Marine Parade": [1.3018, 103.9057],
-  "Pasir Ris": [1.3721, 103.9474],
-  Punggol: [1.3984, 103.9072],
-  Queenstown: [1.2942, 103.786],
-  Sembawang: [1.4491, 103.8185],
-  Sengkang: [1.3868, 103.8914],
-  Serangoon: [1.3554, 103.8679],
-  Tampines: [1.3496, 103.9568],
-  Tengah: [1.3744, 103.7144],
-  "Toa Payoh": [1.3343, 103.8474],
-  Woodlands: [1.4382, 103.789],
-  Yishun: [1.4304, 103.8354],
-};
 
 interface TownStats {
   avgPrice: number;
@@ -55,11 +24,13 @@ declare global {
 export function PropertyMap() {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
-  const markersRef = useRef<any[]>([]);
+  const geoJsonLayerRef = useRef<any>(null);
+  const hoverInfoRef = useRef<HTMLDivElement>(null);
   const [townData, setTownData] = useState<Record<string, TownStats>>({});
-  const [hoveredTown, setHoveredTown] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMessage, setLoadingMessage] = useState("Initializing map...");
   const setFilters = useSetAtom(filtersAtom);
+  const statsRef = useRef<Record<string, TownStats>>({});
 
   useEffect(() => {
     const link = document.createElement("link");
@@ -73,7 +44,7 @@ export function PropertyMap() {
       "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js";
     script.async = true;
     script.onload = () => {
-      fetchTownData();
+      initializeMap();
     };
     document.body.appendChild(script);
 
@@ -84,16 +55,121 @@ export function PropertyMap() {
     };
   }, []);
 
+  const getHeatmapColor = (
+    price: number,
+    minPrice: number,
+    maxPrice: number
+  ) => {
+    const normalized = (price - minPrice) / (maxPrice - minPrice);
+
+    if (normalized < 0.25) {
+      const t = normalized / 0.25;
+      return `rgb(${Math.round(34 + (245 - 34) * t)}, ${Math.round(
+        197 + (200 - 197) * t
+      )}, ${Math.round(94 + (66 - 94) * t)})`;
+    } else if (normalized < 0.5) {
+      const t = (normalized - 0.25) / 0.25;
+      return `rgb(${Math.round(245 + (251 - 245) * t)}, ${Math.round(
+        200 + (191 - 200) * t
+      )}, ${Math.round(66 + (36 - 66) * t)})`;
+    } else if (normalized < 0.75) {
+      const t = (normalized - 0.5) / 0.25;
+      return `rgb(${Math.round(251 + (249 - 251) * t)}, ${Math.round(
+        191 + (115 - 191) * t
+      )}, ${Math.round(36 + (22 - 36) * t)})`;
+    } else {
+      const t = (normalized - 0.75) / 0.25;
+      return `rgb(${Math.round(249 + (239 - 249) * t)}, ${Math.round(
+        115 + (68 - 115) * t
+      )}, ${Math.round(22 + (68 - 22) * t)})`;
+    }
+  };
+
+  const getBorderGradientColors = (
+    price: number,
+    minPrice: number,
+    maxPrice: number
+  ) => {
+    const baseColor = getHeatmapColor(price, minPrice, maxPrice);
+    const match = baseColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+    if (!match) return [baseColor, baseColor];
+
+    const [_, r, g, b] = match.map(Number);
+
+    const lighter = `rgb(${Math.min(r + 40, 255)}, ${Math.min(
+      g + 40,
+      255
+    )}, ${Math.min(b + 40, 255)})`;
+    const darker = `rgb(${Math.max(r - 40, 0)}, ${Math.max(
+      g - 40,
+      0
+    )}, ${Math.max(b - 40, 0)})`;
+
+    return [lighter, darker];
+  };
+
+  const normalizeTownName = (name: string) => {
+    return name.toLowerCase().trim().replace(/\s+/g, " ");
+  };
+
+  const matchTownName = (planningArea: string): string => {
+    const normalized = planningArea.trim();
+    const exactMatch = towns.find(
+      (town) => town.toLowerCase() === normalized.toLowerCase()
+    );
+    if (exactMatch) return exactMatch;
+
+    // Map GeoJSON planning areas to your town names
+    const variations: Record<string, string> = {
+      kallang: "Kallang/Whampoa",
+      "downtown core": "Central Area",
+      museum: "Central Area",
+      newton: "Central Area",
+      orchard: "Central Area",
+      outram: "Central Area",
+      "river valley": "Central Area",
+      rochor: "Central Area",
+      "singapore river": "Central Area",
+      tanglin: "Central Area",
+      novena: "Central Area",
+      "marina south": "Central Area",
+      "marina east": "Central Area",
+      "straits view": "Central Area",
+    };
+
+    const lowerNormalized = normalized.toLowerCase();
+    if (variations[lowerNormalized]) {
+      return variations[lowerNormalized];
+    }
+
+    return planningArea;
+  };
+
   const fetchTownData = async () => {
+    setLoadingMessage("Loading property data...");
     try {
       const res = await fetch("/api/dataset?all=true");
       const data = await res.json();
       const properties: Property[] = data.data || [];
-
       const stats: Record<string, TownStats> = {};
 
       properties.forEach((prop) => {
-        const town = prop.town.toLowerCase(); // Store in lowercase for matching
+        // Map the town name from property data to match GeoJSON areas
+        let townName = prop.town;
+
+        // Handle special cases where property data uses combined names
+        if (
+          townName.toLowerCase().includes("kallang") ||
+          townName.toLowerCase().includes("whampoa")
+        ) {
+          townName = "KALLANG"; // Match GeoJSON format
+        } else if (townName.toLowerCase() === "central area") {
+          // Keep as "CENTRAL AREA" - we'll aggregate all central planning areas to this
+          townName = "CENTRAL AREA";
+        }
+
+        const town = normalizeTownName(townName);
+
         if (!stats[town]) {
           stats[town] = {
             avgPrice: 0,
@@ -107,7 +183,6 @@ export function PropertyMap() {
         stats[town].avgPrice += prop.price;
         stats[town].avgArea += prop.floor_area_sqm;
 
-        // Collect trend data
         prop.trend.forEach((t) => {
           const existing = stats[town].trend.find((tr) => tr.date === t.date);
           if (existing) {
@@ -118,26 +193,218 @@ export function PropertyMap() {
         });
       });
 
-      // Calculate averages
       Object.keys(stats).forEach((town) => {
         stats[town].avgPrice = stats[town].avgPrice / stats[town].count;
         stats[town].avgArea = stats[town].avgArea / stats[town].count;
         stats[town].trend.sort((a, b) => a.date.localeCompare(b.date));
       });
 
-      console.log("Town data loaded:", Object.keys(stats));
-      console.log("Sample stats:", stats[Object.keys(stats)[0]]);
+      // Now aggregate central area stats to all central planning areas
+      const centralStats = stats[normalizeTownName("CENTRAL AREA")];
+      if (centralStats) {
+        const centralAreas = [
+          "downtown core",
+          "museum",
+          "newton",
+          "orchard",
+          "outram",
+          "river valley",
+          "rochor",
+          "singapore river",
+          "tanglin",
+          "novena",
+          "marina south",
+          "marina east",
+          "straits view",
+        ];
 
-      setTownData(stats);
-      initializeMap(stats);
+        centralAreas.forEach((area) => {
+          const normalized = normalizeTownName(area);
+          stats[normalized] = { ...centralStats };
+        });
+      }
+
+      return stats;
     } catch (error) {
       console.error("Error fetching town data:", error);
-    } finally {
-      setLoading(false);
+      return {};
     }
   };
 
-  const initializeMap = (stats: Record<string, TownStats>) => {
+  const fetchBoundaries = async () => {
+    setLoadingMessage("Loading Singapore planning areas...");
+    try {
+      const pollResponse = await fetch(
+        "https://api-open.data.gov.sg/v1/public/api/datasets/d_4765db0e87b9c86336792efe8a1f7a66/poll-download"
+      );
+      const pollData = await pollResponse.json();
+
+      if (pollData.code !== 0) {
+        throw new Error(pollData.errMsg || "Failed to fetch boundary data");
+      }
+      const geoJsonResponse = await fetch(pollData.data.url);
+      const geoJsonData = await geoJsonResponse.json();
+
+      // Aggregate central area features
+      const centralAreaNames = [
+        "DOWNTOWN CORE",
+        "MUSEUM",
+        "NEWTON",
+        "ORCHARD",
+        "OUTRAM",
+        "RIVER VALLEY",
+        "ROCHOR",
+        "SINGAPORE RIVER",
+        "TANGLIN",
+        "NOVENA",
+        "MARINA SOUTH",
+        "MARINA EAST",
+        "STRAITS VIEW",
+      ];
+
+      const centralFeatures: any[] = [];
+      const otherFeatures: any[] = [];
+
+      geoJsonData.features.forEach((feature: any) => {
+        const planningArea = extractPlanningArea(feature);
+        if (centralAreaNames.includes(planningArea.toUpperCase())) {
+          centralFeatures.push(feature);
+        } else {
+          otherFeatures.push(feature);
+        }
+      });
+
+      // Merge central area geometries into one
+      if (centralFeatures.length > 0) {
+        const mergedGeometry = {
+          type: "MultiPolygon",
+          coordinates: [] as any[],
+        };
+
+        centralFeatures.forEach((feature: any) => {
+          if (feature.geometry.type === "Polygon") {
+            mergedGeometry.coordinates.push(feature.geometry.coordinates);
+          } else if (feature.geometry.type === "MultiPolygon") {
+            mergedGeometry.coordinates.push(...feature.geometry.coordinates);
+          }
+        });
+
+        const mergedFeature = {
+          type: "Feature",
+          properties: {
+            Name: "Central Area",
+            PLN_AREA_N: "Central Area",
+            Description: "<th>PLN_AREA_N</th><td>Central Area</td>",
+          },
+          geometry: mergedGeometry,
+        };
+
+        otherFeatures.push(mergedFeature);
+      }
+
+      return {
+        type: "FeatureCollection",
+        features: otherFeatures,
+      };
+    } catch (error) {
+      console.error("Error fetching boundaries:", error);
+      return null;
+    }
+  };
+
+  const extractPlanningArea = (feature: any) => {
+    const description = feature.properties.Description || "";
+    const match = description.match(/<th>PLN_AREA_N<\/th>\s*<td>([^<]+)<\/td>/);
+    const areaName = match
+      ? match[1]
+      : feature.properties.PLN_AREA_N || feature.properties.Name;
+
+    return areaName;
+  };
+
+  const getTrendIcon = (change: number) => {
+    if (change > 2)
+      return `<svg class="w-4 h-4 text-red-600 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>`;
+    if (change < -2)
+      return `<svg class="w-4 h-4 text-green-600 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"></path></svg>`;
+    return `<svg class="w-4 h-4 text-blue-600 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"></path></svg>`;
+  };
+
+  const updateHoverInfo = (
+    planningArea: string | null,
+    townStats: TownStats | null
+  ) => {
+    if (!hoverInfoRef.current) return;
+
+    if (!planningArea || !townStats) {
+      hoverInfoRef.current.style.display = "none";
+      return;
+    }
+
+    const trend = townStats.trend;
+    let changePercent = 0;
+    if (trend.length >= 2) {
+      const first = trend[0].avgPrice;
+      const last = trend[trend.length - 1].avgPrice;
+      changePercent = ((last - first) / first) * 100;
+    }
+
+    const trendBars = trend
+      .slice(-8)
+      .map((point, i) => {
+        const max = Math.max(...trend.map((t) => t.avgPrice));
+        const height = (point.avgPrice / max) * 100;
+        return `<div class="flex-1 bg-gradient-to-t from-blue-500 to-blue-400 rounded-t transition-all hover:from-blue-600 hover:to-blue-500" style="height: ${height}%" title="${
+          point.date
+        }: $${point.avgPrice.toLocaleString()}"></div>`;
+      })
+      .join("");
+
+    hoverInfoRef.current.innerHTML = `
+      <div class="space-y-4">
+        <div class="flex items-start justify-between">
+          <div>
+            <h3 class="font-semibold text-lg text-gray-900">${planningArea}</h3>
+            <p class="text-sm text-gray-500">${townStats.count} properties</p>
+          </div>
+          ${getTrendIcon(changePercent)}
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div class="space-y-1">
+            <p class="text-xs text-gray-500 font-medium">Avg Price</p>
+            <p class="text-xl font-bold text-gray-900">$${(
+              townStats.avgPrice / 1000
+            ).toFixed(0)}k</p>
+            <p class="text-xs text-gray-600 font-medium">${
+              changePercent > 0 ? "+" : ""
+            }${changePercent.toFixed(1)}%</p>
+          </div>
+
+          <div class="space-y-1">
+            <p class="text-xs text-gray-500 font-medium">Avg Area</p>
+            <p class="text-xl font-bold text-gray-900">${townStats.avgArea.toFixed(
+              0
+            )} m²</p>
+          </div>
+        </div>
+
+        <div class="pt-3 border-t border-gray-100">
+          <p class="text-xs text-gray-500 font-medium mb-2">Price Trend</p>
+          <div class="flex items-end gap-1 h-16">
+            ${trendBars}
+          </div>
+        </div>
+
+        <p class="text-xs text-gray-400 italic text-center pt-2 border-t border-gray-100">
+          Click to filter by this town
+        </p>
+      </div>
+    `;
+    hoverInfoRef.current.style.display = "block";
+  };
+
+  const initializeMap = async () => {
     if (!mapRef.current || mapInstanceRef.current || !window.L) return;
 
     const L = window.L;
@@ -156,158 +423,238 @@ export function PropertyMap() {
 
     mapInstanceRef.current = map;
 
-    // Add markers for each town
-    Object.entries(townCenters).forEach(([town, coords]) => {
-      const townKey = town.toLowerCase(); // Convert to lowercase for lookup
-      const townStats = stats[townKey];
+    const [stats, boundaries] = await Promise.all([
+      fetchTownData(),
+      fetchBoundaries(),
+    ]);
 
-      if (!townStats) {
-        console.log(
-          `No stats found for town: ${town} (looking for: ${townKey})`
+    if (!boundaries || Object.keys(stats).length === 0) {
+      console.error("Missing data:", {
+        stats: Object.keys(stats).length,
+        boundaries: !!boundaries,
+      });
+      setLoading(false);
+      return;
+    }
+
+    setTownData(stats);
+    statsRef.current = stats;
+    setLoadingMessage("Rendering heatmap...");
+
+    const prices = Object.values(stats).map((s) => s.avgPrice);
+    const minPrice = Math.min(...prices);
+    const maxPrice = Math.max(...prices);
+
+    console.log("Price range:", { minPrice, maxPrice });
+
+    let matchedCount = 0;
+
+    map.createPane("gradientBorders");
+    map.getPane("gradientBorders").style.zIndex = 650;
+
+    geoJsonLayerRef.current = L.geoJSON(boundaries, {
+      pane: "gradientBorders",
+      style: (feature: any) => {
+        const planningArea = extractPlanningArea(feature);
+        const townKey = normalizeTownName(planningArea);
+        const townStats = stats[townKey];
+
+        if (!townStats) {
+          return {
+            fillColor: "#e5e7eb",
+            weight: 2,
+            opacity: 1,
+            color: "#d1d5db",
+            fillOpacity: 0.3,
+          };
+        }
+
+        matchedCount++;
+        const heatmapColor = getHeatmapColor(
+          townStats.avgPrice,
+          minPrice,
+          maxPrice
         );
-        return;
-      }
+        const [lighter, darker] = getBorderGradientColors(
+          townStats.avgPrice,
+          minPrice,
+          maxPrice
+        );
 
-      console.log(`Adding marker for ${town}:`, {
-        count: townStats.count,
-        avgPrice: townStats.avgPrice,
-      });
-
-      const marker = L.circleMarker(coords, {
-        radius: Math.min(Math.max(townStats.count / 20, 8), 25),
-        fillColor: "#3b82f6",
-        color: "#1e40af",
-        weight: 2,
-        opacity: 0.8,
-        fillOpacity: 0.3,
-      }).addTo(map);
-
-      marker.on("mouseover", function (this: any) {
-        this.setStyle({
-          fillOpacity: 0.7,
+        return {
+          fillColor: heatmapColor,
           weight: 3,
-          color: "#1e3a8a",
+          opacity: 1,
+          color: lighter,
+          fillOpacity: 0.75,
+        };
+      },
+      onEachFeature: (feature: any, layer: any) => {
+        const planningArea = extractPlanningArea(feature);
+        const townKey = normalizeTownName(planningArea);
+        const townStats = stats[townKey];
+
+        layer.on("mouseover", function (e: any) {
+          console.log("Mouseover:", planningArea);
+          const layer = e.target;
+
+          if (townStats) {
+            const [lighter, darker] = getBorderGradientColors(
+              townStats.avgPrice,
+              minPrice,
+              maxPrice
+            );
+
+            layer.setStyle({
+              weight: 5,
+              fillOpacity: 0.9,
+              color: darker,
+            });
+          } else {
+            layer.setStyle({
+              weight: 4,
+              fillOpacity: 0.5,
+            });
+          }
+
+          layer.bringToFront();
+          updateHoverInfo(planningArea, townStats);
         });
-        setHoveredTown(town);
-      });
 
-      marker.on("mouseout", function (this: any) {
-        this.setStyle({
-          fillOpacity: 0.3,
-          weight: 2,
-          color: "#1e40af",
+        layer.on("mouseout", function (e: any) {
+          console.log("Mouseout:", planningArea);
+          const layer = e.target;
+
+          if (townStats) {
+            const [lighter, darker] = getBorderGradientColors(
+              townStats.avgPrice,
+              minPrice,
+              maxPrice
+            );
+            layer.setStyle({
+              weight: 3,
+              fillOpacity: 0.75,
+              color: lighter,
+            });
+          } else {
+            layer.setStyle({
+              weight: 2,
+              fillOpacity: 0.3,
+            });
+          }
+
+          updateHoverInfo(null, null);
         });
-        setHoveredTown(null);
-      });
 
-      marker.on("click", () => {
-        setFilters((prev) => ({ ...prev, town }));
-      });
+        layer.on("click", function () {
+          console.log("Click:", planningArea);
+          if (townStats) {
+            const matchedTown = matchTownName(planningArea);
+            console.log("Matched town:", matchedTown);
+            setFilters((prev: any) => ({ ...prev, town: matchedTown }));
+          }
+        });
+      },
+    }).addTo(map);
 
-      markersRef.current.push(marker);
+    console.log(
+      "Matched areas:",
+      matchedCount,
+      "out of",
+      boundaries.features?.length
+    );
+
+    // Log all planning areas from GeoJSON
+    const planningAreas = boundaries.features.map((f: any) =>
+      extractPlanningArea(f)
+    );
+    console.log("All planning areas from GeoJSON:", planningAreas.sort());
+
+    // Log all towns from your data
+    const townKeys = Object.keys(stats).map((key) => {
+      // Convert normalized key back to original format for display
+      const original = towns.find((t) => normalizeTownName(t) === key);
+      return original || key;
     });
+    console.log("All towns from your data:", townKeys.sort());
+
+    // Find unmatched planning areas (areas in map but not in data)
+    const unmatchedAreas = planningAreas.filter((area: string) => {
+      const normalized = normalizeTownName(area);
+      return !stats[normalized];
+    });
+    console.log(
+      "Unmatched planning areas (in map, not in data):",
+      unmatchedAreas.sort()
+    );
+
+    // Find unmatched towns (towns in data but not in map)
+    const unmatchedTowns = towns.filter((town) => {
+      const normalized = normalizeTownName(town);
+      const hasStats = stats[normalized];
+      const inGeoJson = planningAreas.some(
+        (area: string) => normalizeTownName(area) === normalized
+      );
+      return hasStats && !inGeoJson;
+    });
+    console.log(
+      "Unmatched towns (in data, not in map):",
+      unmatchedTowns.sort()
+    );
+
+    setLoading(false);
   };
-
-  const toTitleCase = (str: string) => {
-    return str;
-  };
-
-  const getTrendIcon = (trend: Array<{ date: string; avgPrice: number }>) => {
-    if (trend.length < 2) return <Minus className="w-4 h-4 text-gray-600" />;
-    const first = trend[0].avgPrice;
-    const last = trend[trend.length - 1].avgPrice;
-    const change = ((last - first) / first) * 100;
-
-    if (change > 2) return <TrendingUp className="w-4 h-4 text-red-600" />;
-    if (change < -2) return <TrendingDown className="w-4 h-4 text-green-600" />;
-    return <Minus className="w-4 h-4 text-blue-600" />;
-  };
-
-  const getPriceTrend = (trend: Array<{ date: string; avgPrice: number }>) => {
-    if (trend.length < 2) return "0.0%";
-    const first = trend[0].avgPrice;
-    const last = trend[trend.length - 1].avgPrice;
-    const change = ((last - first) / first) * 100;
-    return `${change > 0 ? "+" : ""}${change.toFixed(1)}%`;
-  };
-
-  const stats = hoveredTown && townData[hoveredTown.toLowerCase()];
 
   return (
     <div className="relative h-[600px]">
       <div ref={mapRef} className="w-full h-full rounded-xl" />
 
-      {hoveredTown && stats && (
-        <div className="absolute top-4 right-4 w-80 bg-white/95 backdrop-blur-sm rounded-xl shadow-2xl border border-gray-200 p-5 z-[1000] animate-in fade-in slide-in-from-top-2 duration-200">
-          <div className="space-y-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="font-semibold text-lg text-gray-900">
-                  {hoveredTown}
-                </h3>
-                <p className="text-sm text-gray-500">
-                  {stats.count} properties
-                </p>
-              </div>
-              {getTrendIcon(stats.trend)}
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <p className="text-xs text-gray-500 font-medium">Avg Price</p>
-                <p className="text-xl font-bold text-gray-900">
-                  ${(stats.avgPrice / 1000).toFixed(0)}k
-                </p>
-                <p className="text-xs text-gray-600 font-medium">
-                  {getPriceTrend(stats.trend)}
-                </p>
-              </div>
-
-              <div className="space-y-1">
-                <p className="text-xs text-gray-500 font-medium">Avg Area</p>
-                <p className="text-xl font-bold text-gray-900">
-                  {stats.avgArea.toFixed(0)} m²
-                </p>
+      {!loading && Object.keys(townData).length > 0 && (
+        <div className="absolute bottom-4 left-4 bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200 p-4 z-[1000]">
+          <p className="text-xs font-semibold text-gray-700 mb-2">
+            Average Price
+          </p>
+          <div className="flex items-center gap-2">
+            <div className="flex flex-col gap-1">
+              <div className="w-32 h-4 rounded-full bg-gradient-to-r from-[rgb(34,197,94)] via-[rgb(245,200,66)] via-[rgb(251,191,36)] via-[rgb(249,115,22)] to-[rgb(239,68,68)]" />
+              <div className="flex justify-between text-[10px] text-gray-600 font-medium">
+                <span>
+                  $
+                  {Math.min(
+                    ...Object.values(townData).map((s) => s.avgPrice / 1000)
+                  ).toFixed(0)}
+                  k
+                </span>
+                <span>
+                  $
+                  {Math.max(
+                    ...Object.values(townData).map((s) => s.avgPrice / 1000)
+                  ).toFixed(0)}
+                  k
+                </span>
               </div>
             </div>
-
-            <div className="pt-3 border-t border-gray-100">
-              <p className="text-xs text-gray-500 font-medium mb-2">
-                Price Trend
-              </p>
-              <div className="flex items-end gap-1 h-16">
-                {stats.trend.slice(-8).map((point, i) => {
-                  const max = Math.max(...stats.trend.map((t) => t.avgPrice));
-                  const height = (point.avgPrice / max) * 100;
-                  return (
-                    <div
-                      key={i}
-                      className="flex-1 bg-gradient-to-t from-blue-500 to-blue-400 rounded-t transition-all hover:from-blue-600 hover:to-blue-500"
-                      style={{ height: `${height}%` }}
-                      title={`${
-                        point.date
-                      }: $${point.avgPrice.toLocaleString()}`}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-
-            <p className="text-xs text-gray-400 italic text-center pt-2 border-t border-gray-100">
-              Click to filter by this town
-            </p>
           </div>
+          <p className="text-[10px] text-gray-500 mt-2 italic">
+            Area shading = avg property price
+          </p>
         </div>
       )}
 
+      <div
+        ref={hoverInfoRef}
+        className="absolute top-4 right-4 w-80 bg-white/95 backdrop-blur-sm rounded-xl shadow-2xl border border-gray-200 p-5 z-[1000]"
+        style={{ display: "none" }}
+      />
+
       {loading && (
-        <div className="absolute inset-0 bg-white/90 backdrop-blur-sm flex items-center justify-center z-[1000]">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-3" />
-            <p className="text-sm text-gray-600 font-medium">
-              Loading map data...
+        <div className="rounded-xl absolute inset-0 flex flex-col items-center justify-center z-[1000] bg-gradient-to-b from-blue-50 to-white/90 backdrop-blur-sm animate-in fade-in duration-300">
+          <Card className="flex flex-col items-center gap-3 px-6 py-5 shadow-md border border-blue-100 bg-white/90 rounded-2xl">
+            <Loader2 className="h-8 w-8 text-blue-600 animate-spin" />
+            <p className="text-sm text-gray-700 font-medium tracking-wide">
+              {loadingMessage}
             </p>
-          </div>
+          </Card>
         </div>
       )}
     </div>

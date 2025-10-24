@@ -38,7 +38,7 @@ export default function PropertyListingPage() {
               : property.map((p) => <PropertyCard key={p.id} property={p} />)}
           </div>
         )}
-        {pagination.totalPages > 1 && (
+        {pagination.totalPages > 1 && viewMode == "grid" && (
           <PaginationControl
             currentPage={pagination.page}
             totalPages={pagination.totalPages}

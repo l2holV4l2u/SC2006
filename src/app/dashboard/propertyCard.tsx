@@ -24,8 +24,12 @@ import { Property } from "@/type";
 import * as XLSX from "xlsx";
 import { useAtomValue } from "jotai";
 import { fairnessLoadingAtom, fairnessMapAtom } from "@/lib/propertyAtom";
+import { useSession } from "next-auth/react";
 
 export function PropertyCard({ property }: { property: Property }) {
+  const { data: session } = useSession();
+  const isPremium = session?.user?.role == "PREMIUM" || false;
+
   const fairnessLoading = useAtomValue(fairnessLoadingAtom);
   const fairnessMap = useAtomValue(fairnessMapAtom);
   const fairness = fairnessMap[property.id];
@@ -118,14 +122,16 @@ export function PropertyCard({ property }: { property: Property }) {
             fairness && getBadge(fairness.label)
           )}
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={exportToExcel}
-          className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-        >
-          <Download className="h-4 w-4" />
-        </Button>
+        {isPremium && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={exportToExcel}
+            className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+          >
+            <Download className="h-4 w-4" />
+          </Button>
+        )}
       </div>
 
       {/* Price Trend Chart */}

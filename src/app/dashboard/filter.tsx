@@ -49,6 +49,7 @@ import type { FairnessOutput, Filters } from "@/type";
 import { useSession } from "next-auth/react";
 import { PremiumFeatureDialog } from "@/components/custom/premiumFeatureDialog";
 import { parseRemainingLease } from "@/lib/dataset";
+import { towns } from "@/lib/const";
 
 export function FilterSection() {
   const { data: session } = useSession();
@@ -64,13 +65,12 @@ export function FilterSection() {
   const setFairnessMap = useSetAtom(fairnessMapAtom);
 
   // Local state for editing filters before applying
-  const [localFilters, setLocalFilters] = useState<Filters>(filters);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [openSaveDialog, setOpenSaveDialog] = useState(false);
   const [openPremiumDialog, setOpenPremiumDialog] = useState(false);
   const [filterName, setFilterName] = useState("");
 
-  useEffect(() => setLocalFilters(filters), [filters]);
+  useEffect(() => setFilters(filters), [filters]);
 
   // Fetch properties only when pagination changes (not on filter changes)
   useEffect(() => {
@@ -79,7 +79,7 @@ export function FilterSection() {
 
   // Date Validation Helper
   const isValidDateRange = useMemo(() => {
-    const { yearFrom, monthFrom, yearTo, monthTo } = localFilters;
+    const { yearFrom, monthFrom, yearTo, monthTo } = filters;
 
     if (!yearFrom && !monthFrom) return true;
     if (!yearTo && !monthTo) return true;
@@ -94,11 +94,11 @@ export function FilterSection() {
     if (fromYear === toYear && fromMonth > toMonth) return false;
 
     return true;
-  }, [localFilters]);
+  }, [filters]);
 
   // Helpers
   const handleChange = (field: keyof Filters, value: string) =>
-    setLocalFilters((prev) => ({ ...prev, [field]: value }));
+    setFilters((prev) => ({ ...prev, [field]: value }));
 
   const handleSaveFilter = async () => {
     if (!isValidDateRange) {
@@ -112,7 +112,7 @@ export function FilterSection() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: filterName,
-          filters: { ...localFilters, askingPrice },
+          filters: { ...filters, askingPrice },
         }),
       });
 
@@ -142,7 +142,7 @@ export function FilterSection() {
     }
 
     // Apply the local filters to the atom
-    setFilters(localFilters);
+    setFilters(filters);
 
     // Reset to page 1 when applying new filters
     setPagination((prev) => ({ ...prev, page: 1 }));
@@ -155,9 +155,7 @@ export function FilterSection() {
     setLoading(true);
     try {
       const params = new URLSearchParams({
-        ...Object.fromEntries(
-          Object.entries(localFilters).filter(([_, v]) => v)
-        ),
+        ...Object.fromEntries(Object.entries(filters).filter(([_, v]) => v)),
         page: pagination.page.toString(),
         itemsPerPage: "9",
       });
@@ -242,7 +240,7 @@ export function FilterSection() {
   };
 
   const handleResetFilters = () => {
-    setLocalFilters(defaultFilters);
+    setFilters(defaultFilters);
   };
 
   // --- UI Data ---
@@ -272,10 +270,10 @@ export function FilterSection() {
 
   const hasActiveFilters = useMemo(
     () =>
-      Object.entries(localFilters).some(
+      Object.entries(filters).some(
         ([k, v]) => v && v !== defaultFilters[k as keyof Filters]
       ),
-    [localFilters]
+    [filters]
   );
 
   // Render
@@ -349,43 +347,14 @@ export function FilterSection() {
           <div className="space-y-2">
             <div className="text-sm font-medium text-gray-700">Town</div>
             <Select
-              value={localFilters.town || "all"}
+              value={filters.town || "all"}
               onValueChange={(v) => handleChange("town", v === "all" ? "" : v)}
             >
               <SelectTrigger>
                 <SelectValue placeholder="All Towns" />
               </SelectTrigger>
               <SelectContent>
-                {[
-                  "all",
-                  "Ang Mo Kio",
-                  "Bedok",
-                  "Bishan",
-                  "Bukit Batok",
-                  "Bukit Merah",
-                  "Bukit Panjang",
-                  "Bukit Timah",
-                  "Central Area",
-                  "Choa Chu Kang",
-                  "Clementi",
-                  "Geylang",
-                  "Hougang",
-                  "Jurong East",
-                  "Jurong West",
-                  "Kallang/Whampoa",
-                  "Marine Parade",
-                  "Pasir Ris",
-                  "Punggol",
-                  "Queenstown",
-                  "Sembawang",
-                  "Sengkang",
-                  "Serangoon",
-                  "Tampines",
-                  "Tengah",
-                  "Toa Payoh",
-                  "Woodlands",
-                  "Yishun",
-                ].map((town) => (
+                {towns.map((town) => (
                   <SelectItem key={town} value={town}>
                     {town === "all" ? "All Towns" : town}
                   </SelectItem>
@@ -398,7 +367,7 @@ export function FilterSection() {
           <div className="space-y-2">
             <div className="text-sm font-medium text-gray-700">Flat Type</div>
             <Select
-              value={localFilters.flatType || "all"}
+              value={filters.flatType || "all"}
               onValueChange={(v) =>
                 handleChange("flatType", v === "all" ? "" : v)
               }
@@ -428,7 +397,7 @@ export function FilterSection() {
           <div className="space-y-2">
             <div className="text-sm font-medium text-gray-700">Sort By</div>
             <Select
-              value={localFilters.sortBy}
+              value={filters.sortBy}
               onValueChange={(v) => handleChange("sortBy", v)}
             >
               <SelectTrigger>
@@ -482,7 +451,7 @@ export function FilterSection() {
                   <div className="space-y-2">
                     <div className="text-xs text-gray-600">Year</div>
                     <Select
-                      value={localFilters.yearFrom || "any"}
+                      value={filters.yearFrom || "any"}
                       onValueChange={(v) =>
                         handleChange("yearFrom", v === "any" ? "" : v)
                       }
@@ -504,7 +473,7 @@ export function FilterSection() {
                   <div className="space-y-2">
                     <div className="text-xs text-gray-600">Month</div>
                     <Select
-                      value={localFilters.monthFrom || "any"}
+                      value={filters.monthFrom || "any"}
                       onValueChange={(v) =>
                         handleChange("monthFrom", v === "any" ? "" : v)
                       }
@@ -534,7 +503,7 @@ export function FilterSection() {
                   <div className="space-y-2">
                     <div className="text-xs text-gray-600">Year</div>
                     <Select
-                      value={localFilters.yearTo || "any"}
+                      value={filters.yearTo || "any"}
                       onValueChange={(v) =>
                         handleChange("yearTo", v === "any" ? "" : v)
                       }
@@ -556,7 +525,7 @@ export function FilterSection() {
                   <div className="space-y-2">
                     <div className="text-xs text-gray-600">Month</div>
                     <Select
-                      value={localFilters.monthTo || "any"}
+                      value={filters.monthTo || "any"}
                       onValueChange={(v) =>
                         handleChange("monthTo", v === "any" ? "" : v)
                       }
@@ -597,17 +566,14 @@ export function FilterSection() {
                     Floor Area
                   </div>
                   <div className="text-xs text-gray-600">
-                    {localFilters.minArea} - {localFilters.maxArea} sqm
+                    {filters.minArea} - {filters.maxArea} sqm
                   </div>
                 </div>
                 <Slider
                   min={30}
                   max={250}
                   step={5}
-                  value={[
-                    Number(localFilters.minArea),
-                    Number(localFilters.maxArea),
-                  ]}
+                  value={[Number(filters.minArea), Number(filters.maxArea)]}
                   onValueChange={([min, max]) => {
                     handleChange("minArea", min.toString());
                     handleChange("maxArea", max.toString());
@@ -621,17 +587,14 @@ export function FilterSection() {
                     Storey Range
                   </div>
                   <div className="text-xs text-gray-600">
-                    Level {localFilters.minStorey} - {localFilters.maxStorey}
+                    Level {filters.minStorey} - {filters.maxStorey}
                   </div>
                 </div>
                 <Slider
                   min={1}
                   max={50}
                   step={1}
-                  value={[
-                    Number(localFilters.minStorey),
-                    Number(localFilters.maxStorey),
-                  ]}
+                  value={[Number(filters.minStorey), Number(filters.maxStorey)]}
                   onValueChange={([min, max]) => {
                     handleChange("minStorey", min.toString());
                     handleChange("maxStorey", max.toString());
@@ -688,32 +651,31 @@ export function FilterSection() {
                   <div className="flex justify-between text-sm">
                     <div className="text-gray-600">Town:</div>
                     <div className="font-medium text-gray-900">
-                      {localFilters.town || "All Towns"}
+                      {filters.town || "All Towns"}
                     </div>
                   </div>
 
                   <div className="flex justify-between text-sm">
                     <div className="text-gray-600">Flat Type:</div>
                     <div className="font-medium text-gray-900">
-                      {localFilters.flatType || "All Types"}
+                      {filters.flatType || "All Types"}
                     </div>
                   </div>
 
                   <div className="flex justify-between text-sm">
                     <div className="text-gray-600">Transaction Period:</div>
                     <div className="font-medium text-gray-900">
-                      {localFilters.yearFrom || localFilters.monthFrom
+                      {filters.yearFrom || filters.monthFrom
                         ? `${
-                            months.find(
-                              (m) => m.value === localFilters.monthFrom
-                            )?.label || ""
-                          } ${localFilters.yearFrom || ""}`
-                        : "Any"}
-                      {localFilters.yearTo || localFilters.monthTo
-                        ? ` - ${
-                            months.find((m) => m.value === localFilters.monthTo)
+                            months.find((m) => m.value === filters.monthFrom)
                               ?.label || ""
-                          } ${localFilters.yearTo || ""}`
+                          } ${filters.yearFrom || ""}`
+                        : "Any"}
+                      {filters.yearTo || filters.monthTo
+                        ? ` - ${
+                            months.find((m) => m.value === filters.monthTo)
+                              ?.label || ""
+                          } ${filters.yearTo || ""}`
                         : ""}
                     </div>
                   </div>
@@ -721,14 +683,14 @@ export function FilterSection() {
                   <div className="flex justify-between text-sm">
                     <div className="text-gray-600">Floor Area:</div>
                     <div className="font-medium text-gray-900">
-                      {localFilters.minArea} - {localFilters.maxArea} sqm
+                      {filters.minArea} - {filters.maxArea} sqm
                     </div>
                   </div>
 
                   <div className="flex justify-between text-sm">
                     <div className="text-gray-600">Storey Range:</div>
                     <div className="font-medium text-gray-900">
-                      Level {localFilters.minStorey} - {localFilters.maxStorey}
+                      Level {filters.minStorey} - {filters.maxStorey}
                     </div>
                   </div>
                 </div>
