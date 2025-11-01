@@ -7,10 +7,15 @@ import { FilterSection } from "./filter";
 import { PropertyCard } from "./propertyCard";
 import { PaginationControl } from "./paginationControl";
 import { PropertyMap } from "./propertyMap";
-import { loadingAtom, paginationAtom, propertyAtom } from "@/lib/propertyAtom";
+import { SortButtons } from "./sortButton";
+import {
+  loadingAtom,
+  paginationAtom,
+  sortedPropertyAtom,
+} from "@/lib/propertyAtom";
 
 export default function PropertyListingPage() {
-  const property = useAtomValue(propertyAtom);
+  const property = useAtomValue(sortedPropertyAtom); // CHANGED: use sortedPropertyAtom
   const loading = useAtomValue(loadingAtom);
   const [viewMode, setViewMode] = useState<"grid" | "map">("grid");
   const [pagination, setPagination] = useAtom(paginationAtom);
@@ -20,6 +25,12 @@ export default function PropertyListingPage() {
       <DashboardNavbar viewMode={viewMode} onViewModeChange={setViewMode} />
       <div className="container mx-auto px-4 py-6 space-y-6 mt-12 max-w-6xl">
         <FilterSection />
+
+        {/* ADDED: Sort badges above property cards */}
+        {viewMode === "grid" && property.length > 0 && !loading && (
+          <SortButtons />
+        )}
+
         {viewMode === "map" ? (
           <PropertyMap />
         ) : property.length === 0 && !loading ? (

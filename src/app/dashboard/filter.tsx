@@ -69,6 +69,7 @@ export function FilterSection() {
   const [openSaveDialog, setOpenSaveDialog] = useState(false);
   const [openPremiumDialog, setOpenPremiumDialog] = useState(false);
   const [filterName, setFilterName] = useState("");
+  const [isSavingFilter, setIsSavingFilter] = useState(false);
 
   useEffect(() => setFilters(filters), [filters]);
 
@@ -106,6 +107,7 @@ export function FilterSection() {
       return;
     }
 
+    setIsSavingFilter(true);
     try {
       const res = await fetch("/api/saved-filters", {
         method: "POST",
@@ -127,6 +129,8 @@ export function FilterSection() {
     } catch (error) {
       console.error(error);
       toast.error("Failed to save filter");
+    } finally {
+      setIsSavingFilter(false);
     }
   };
 
@@ -708,14 +712,24 @@ export function FilterSection() {
               <Button
                 variant="outline"
                 onClick={() => setOpenSaveDialog(false)}
+                disabled={isSavingFilter}
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleSaveFilter}
-                disabled={!filterName.trim() || !isValidDateRange}
+                disabled={
+                  !filterName.trim() || !isValidDateRange || isSavingFilter
+                }
               >
-                Save Filter
+                {isSavingFilter ? (
+                  <>
+                    <Loader2 className="animate-spin" size={16} />
+                    Saving...
+                  </>
+                ) : (
+                  "Save Filter"
+                )}
               </Button>
             </DialogFooter>
           </DialogContent>

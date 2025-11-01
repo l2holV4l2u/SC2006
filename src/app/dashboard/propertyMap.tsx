@@ -313,14 +313,6 @@ export function PropertyMap() {
     return areaName;
   };
 
-  const getTrendIcon = (change: number) => {
-    if (change > 2)
-      return `<svg class="w-4 h-4 text-red-600 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>`;
-    if (change < -2)
-      return `<svg class="w-4 h-4 text-green-600 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"></path></svg>`;
-    return `<svg class="w-4 h-4 text-blue-600 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"></path></svg>`;
-  };
-
   const updateHoverInfo = (
     planningArea: string | null,
     townStats: TownStats | null
@@ -334,10 +326,23 @@ export function PropertyMap() {
 
     const trend = townStats.trend;
     let changePercent = 0;
+    let timeframeText = "";
+
     if (trend.length >= 2) {
       const first = trend[0].avgPrice;
       const last = trend[trend.length - 1].avgPrice;
       changePercent = ((last - first) / first) * 100;
+
+      // Format timeframe
+      const firstDate = new Date(trend[0].date);
+      const lastDate = new Date(trend[trend.length - 1].date);
+      const formatDate = (date: Date) => {
+        return date.toLocaleDateString("en-US", {
+          year: "numeric",
+          month: "short",
+        });
+      };
+      timeframeText = `${formatDate(firstDate)} - ${formatDate(lastDate)}`;
     }
 
     const trendBars = trend
@@ -356,9 +361,10 @@ export function PropertyMap() {
         <div class="flex items-start justify-between">
           <div>
             <h3 class="font-semibold text-lg text-gray-900">${planningArea}</h3>
-            <p class="text-sm text-gray-500">${townStats.count} properties</p>
+            <p class="text-sm text-gray-500">${
+              townStats.count
+            } property types</p>
           </div>
-          ${getTrendIcon(changePercent)}
         </div>
 
         <div class="grid grid-cols-2 gap-4">
@@ -381,7 +387,10 @@ export function PropertyMap() {
         </div>
 
         <div class="pt-3 border-t border-gray-100">
-          <p class="text-xs text-gray-500 font-medium mb-2">Price Trend</p>
+          <div class="flex items-center justify-between mb-2">
+            <p class="text-xs text-gray-500 font-medium">Price Trend</p>
+            <p class="text-xs text-gray-400">${timeframeText}</p>
+          </div>
           <div class="flex items-end gap-1 h-16">
             ${trendBars}
           </div>
@@ -420,10 +429,6 @@ export function PropertyMap() {
     ]);
 
     if (!boundaries || Object.keys(stats).length === 0) {
-      console.error("Missing data:", {
-        stats: Object.keys(stats).length,
-        boundaries: !!boundaries,
-      });
       setLoading(false);
       return;
     }
@@ -435,9 +440,6 @@ export function PropertyMap() {
     const prices = Object.values(stats).map((s) => s.avgPrice);
     const minPrice = Math.min(...prices);
     const maxPrice = Math.max(...prices);
-
-    console.log("Price range:", { minPrice, maxPrice });
-
     let matchedCount = 0;
 
     map.createPane("gradientBorders");
@@ -486,7 +488,6 @@ export function PropertyMap() {
         const townStats = stats[townKey];
 
         layer.on("mouseover", function (e: any) {
-          console.log("Mouseover:", planningArea);
           const layer = e.target;
 
           if (townStats) {
@@ -513,7 +514,6 @@ export function PropertyMap() {
         });
 
         layer.on("mouseout", function (e: any) {
-          console.log("Mouseout:", planningArea);
           const layer = e.target;
 
           if (townStats) {
@@ -538,61 +538,13 @@ export function PropertyMap() {
         });
 
         layer.on("click", function () {
-          console.log("Click:", planningArea);
           if (townStats) {
             const matchedTown = matchTownName(planningArea);
-            console.log("Matched town:", matchedTown);
             setFilters((prev: any) => ({ ...prev, town: matchedTown }));
           }
         });
       },
     }).addTo(map);
-
-    console.log(
-      "Matched areas:",
-      matchedCount,
-      "out of",
-      boundaries.features?.length
-    );
-
-    // Log all planning areas from GeoJSON
-    const planningAreas = boundaries.features.map((f: any) =>
-      extractPlanningArea(f)
-    );
-    console.log("All planning areas from GeoJSON:", planningAreas.sort());
-
-    // Log all towns from your data
-    const townKeys = Object.keys(stats).map((key) => {
-      // Convert normalized key back to original format for display
-      const original = towns.find((t) => normalizeTownName(t) === key);
-      return original || key;
-    });
-    console.log("All towns from your data:", townKeys.sort());
-
-    // Find unmatched planning areas (areas in map but not in data)
-    const unmatchedAreas = planningAreas.filter((area: string) => {
-      const normalized = normalizeTownName(area);
-      return !stats[normalized];
-    });
-    console.log(
-      "Unmatched planning areas (in map, not in data):",
-      unmatchedAreas.sort()
-    );
-
-    // Find unmatched towns (towns in data but not in map)
-    const unmatchedTowns = towns.filter((town) => {
-      const normalized = normalizeTownName(town);
-      const hasStats = stats[normalized];
-      const inGeoJson = planningAreas.some(
-        (area: string) => normalizeTownName(area) === normalized
-      );
-      return hasStats && !inGeoJson;
-    });
-    console.log(
-      "Unmatched towns (in data, not in map):",
-      unmatchedTowns.sort()
-    );
-
     setLoading(false);
   };
 
