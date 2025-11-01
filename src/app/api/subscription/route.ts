@@ -1,10 +1,14 @@
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
+import { NextRequest } from "next/server";
 
-export async function POST(req: Request) {
-  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
-  console.log(token);
+export async function POST(req: NextRequest) {
+  const token = await getToken({
+    req: req as any,
+    secret: process.env.NEXTAUTH_SECRET,
+  });
+
   if (!token?.email) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -20,7 +24,7 @@ export async function POST(req: Request) {
       where: { email: token.email },
       data: {
         role: plan,
-        renewSubscription: new Date(), // set subscription start date
+        renewSubscription: new Date(),
       },
     });
 
