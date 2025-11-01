@@ -234,18 +234,10 @@ export function PropertyMap() {
   const fetchBoundaries = async () => {
     setLoadingMessage("Loading Singapore planning areas...");
     try {
-      const pollResponse = await fetch(
-        "https://api-open.data.gov.sg/v1/public/api/datasets/d_4765db0e87b9c86336792efe8a1f7a66/poll-download"
-      );
-      const pollData = await pollResponse.json();
+      const res = await fetch("/towns.geojson");
+      const geoJsonData = await res.json();
 
-      if (pollData.code !== 0) {
-        throw new Error(pollData.errMsg || "Failed to fetch boundary data");
-      }
-      const geoJsonResponse = await fetch(pollData.data.url);
-      const geoJsonData = await geoJsonResponse.json();
-
-      // Aggregate central area features
+      // Aggregate central area features (same as before)
       const centralAreaNames = [
         "DOWNTOWN CORE",
         "MUSEUM",
@@ -274,7 +266,6 @@ export function PropertyMap() {
         }
       });
 
-      // Merge central area geometries into one
       if (centralFeatures.length > 0) {
         const mergedGeometry = {
           type: "MultiPolygon",

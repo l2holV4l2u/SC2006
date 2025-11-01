@@ -48,6 +48,67 @@ export async function POST(req: Request) {
   return NextResponse.json(saved);
 }
 
+export async function PATCH(req: Request) {
+  try {
+    const session = await auth();
+
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await req.json();
+    const { id, name, filters } = body;
+
+    if (!id) {
+      return NextResponse.json({ error: "Missing filter id" }, { status: 400 });
+    }
+
+    if (!name && !filters) {
+      return NextResponse.json(
+        { error: "Must provide name or filters to update" },
+        { status: 400 }
+      );
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+    });
+
+    if (!user) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    // Check if filter exists and belongs to user
+    const existingFilter = await prisma.savedFilter.findFirst({
+      where: { id, userId: user.id },
+    });
+
+    if (!existingFilter) {
+      return NextResponse.json(
+        { error: "Filter not found or not owned by you" },
+        { status: 404 }
+      );
+    }
+
+    // Update the filter
+    const updated = await prisma.savedFilter.update({
+      where: { id },
+      data: {
+        ...(name && { name }),
+        ...(filters && { filters }),
+      },
+    });
+
+    return NextResponse.json(updated);
+  } catch (err) {
+    console.error("PATCH /api/saved-filters error:", err);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
 export async function DELETE(req: Request) {
   try {
     const session = await auth();
@@ -56,7 +117,6 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Accept id from query string OR request JSON body (more robust)
     const url = new URL(req.url);
     let id = url.searchParams.get("id");
 
@@ -73,21 +133,19 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "Missing filter id" }, { status: 400 });
     }
 
-    // Find the user once
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
     });
+
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // Delete only if the filter belongs to this user — do it atomically
     const deleted = await prisma.savedFilter.deleteMany({
       where: { id, userId: user.id },
     });
 
     if (deleted.count === 0) {
-      // either it didn't exist or it didn't belong to this user
       return NextResponse.json(
         { error: "Filter not found or not owned by you" },
         { status: 404 }
