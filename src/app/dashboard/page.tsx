@@ -38,7 +38,7 @@ export default function PropertyListingPage() {
             No properties found matching your criteria.
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 min-h-[24rem]">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             {loading
               ? Array.from({ length: 9 }).map((_, i) => (
                   <div

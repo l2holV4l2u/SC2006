@@ -6,7 +6,7 @@ import {
   FairnessOutput,
   Property,
 } from "@/type";
-import { getCache } from "@/lib/dataset";
+import { getCache, parseRemainingLease } from "@/lib/dataset";
 
 // Helper: Weighted median
 function weightedMedian(values: number[], weights: number[]): number {
@@ -32,19 +32,6 @@ function weightedMAD(values: number[], weights: number[]): number {
   return weightedMedian(dev, weights);
 }
 
-// Helper to normalize dataset record
-function normalizeRecord(r: any): Comparable {
-  return {
-    month: r.month || r.date || "",
-    town: (r.town || "").toLowerCase().trim(),
-    flat_type: (r.flatType || "").toLowerCase().trim(),
-    floor_area_sqm: parseFloat(r.floor_area_sqm || 0),
-    remaining_lease_years: parseFloat(r.remaining_lease_years || 0),
-    resale_price: parseFloat(r.price || 0),
-    storey_range: r.storey_range || "",
-  };
-}
-
 function computeFairness(
   subject: SubjectInput,
   dataset: any[],
@@ -61,17 +48,47 @@ function computeFairness(
   const L = parseFloat(subject.remaining_lease_years as any);
 
   const normalizedDataset: Comparable[] = [];
+
+  // Properly expand trend data - each array element becomes a separate comparable
   dataset.forEach((prop: Property) => {
     prop.trend.forEach((t) => {
-      normalizedDataset.push({
-        month: t.date,
-        town: prop.town.toLowerCase().trim(),
-        flat_type: prop.flatType.toLowerCase().trim(),
-        floor_area_sqm: t.floor_area_sqm || prop.floor_area_sqm || 0,
-        remaining_lease_years: parseFloat(t.remaining_lease_years || "0"),
-        resale_price: t.avgPrice || prop.price || 0,
-        storey_range: t.storey_range || prop.storey_range || "",
-      });
+      // Handle arrays in trend data
+      const prices = Array.isArray(t.prices) ? t.prices : [t.avgPrice];
+      const floorAreas = Array.isArray(t.floor_area_sqm)
+        ? t.floor_area_sqm
+        : [t.floor_area_sqm];
+      const storeyRanges = Array.isArray(t.storey_range)
+        ? t.storey_range
+        : [t.storey_range];
+      const leases = Array.isArray(t.remaining_lease_years)
+        ? t.remaining_lease_years
+        : [t.remaining_lease_years];
+
+      // Create a comparable for each transaction in this month
+      const numTransactions = prices.length;
+
+      for (let i = 0; i < numTransactions; i++) {
+        const floorArea =
+          floorAreas[i] || floorAreas[0] || prop.floor_area_sqm || 0;
+        const leaseStr = leases[i] || leases[0] || "0";
+        const leaseYears = parseRemainingLease(leaseStr);
+        const price = prices[i] || t.avgPrice || prop.price || 0;
+        const storeyRange =
+          storeyRanges[i] || storeyRanges[0] || prop.storey_range || "";
+
+        // Only add valid transactions
+        if (floorArea > 0 && price > 0) {
+          normalizedDataset.push({
+            month: t.date,
+            town: prop.town.toLowerCase().trim(),
+            flat_type: prop.flatType.toLowerCase().trim(),
+            floor_area_sqm: floorArea,
+            remaining_lease_years: leaseYears,
+            resale_price: price,
+            storey_range: storeyRange,
+          });
+        }
+      }
     });
   });
 
