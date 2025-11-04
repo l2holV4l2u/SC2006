@@ -4,13 +4,12 @@ export type PropertyTrend = {
   date: string; // YYYY-MM
   // Individual data points
   prices: number[];
-  floor_areas: number[];
-  storey_ranges: string[];
+  floor_area: number[];
+  floor_area_sqm: number[];
+  storey_range: string[];
+  remaining_lease_years: string;
   // Aggregated values for display
   avgPrice: number;
-  floor_area_sqm: number;
-  remaining_lease_years: string;
-  storey_range: string;
 };
 
 export type Property = {

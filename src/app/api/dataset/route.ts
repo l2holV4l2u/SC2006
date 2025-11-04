@@ -4,29 +4,28 @@ import { Property } from "@/type";
 import { getCache, parseRemainingLease } from "@/lib/dataset";
 import { auth } from "@/lib/auth";
 
-// Helper to parse storey range and get midpoint
-function getStoreyMidpoint(storeyRange: string): number {
-  if (!storeyRange) return 0;
-  const match = storeyRange.match(/(\d+)\s+TO\s+(\d+)/i);
-  if (match) {
-    return (parseInt(match[1]) + parseInt(match[2])) / 2;
-  }
-  return 0;
-}
-
 // Helper to check if storey range overlaps with filter range
 function storeyInRange(
-  storeyRange: string,
+  storeyRange: string | undefined,
   minStorey: number | null,
   maxStorey: number | null
 ): boolean {
+  // If no storey filters are applied, include everything
   if (minStorey === null && maxStorey === null) return true;
 
-  const storeyMid = getStoreyMidpoint(storeyRange);
-  if (storeyMid === 0) return false; // Invalid storey range
+  // If storey filters are applied but no storey range data exists, exclude it
+  if (!storeyRange) return false;
 
-  if (minStorey !== null && storeyMid < minStorey) return false;
-  if (maxStorey !== null && storeyMid > maxStorey) return false;
+  const match = storeyRange.match(/(\d+)\s+TO\s+(\d+)/i);
+  if (!match) return false;
+
+  const rangeMin = parseInt(match[1]);
+  const rangeMax = parseInt(match[2]);
+
+  // Check if the entire range is within the filter bounds
+  // Both rangeMin and rangeMax must be within minStorey and maxStorey
+  if (minStorey !== null && rangeMin < minStorey) return false;
+  if (maxStorey !== null && rangeMax > maxStorey) return false;
 
   return true;
 }
@@ -96,16 +95,24 @@ export async function GET(req: Request) {
               maxStorey !== null
             ) {
               const filteredIndices: number[] = [];
-              t.floor_areas?.forEach((area, idx) => {
-                const storeyRange = t.storey_ranges?.[idx];
+
+              // Ensure floor_area_sqm is an array
+              const floorAreas = Array.isArray(t.floor_area_sqm)
+                ? t.floor_area_sqm
+                : [];
+
+              floorAreas.forEach((area, idx) => {
+                const storeyRange = t.storey_range?.[idx];
                 const areaMatch =
                   (minArea === null || area >= minArea) &&
                   (maxArea === null || area <= maxArea);
+
                 const storeyMatch = storeyInRange(
                   storeyRange,
                   minStorey,
                   maxStorey
                 );
+
                 if (areaMatch && storeyMatch) filteredIndices.push(idx);
               });
 
@@ -118,8 +125,8 @@ export async function GET(req: Request) {
               return {
                 ...t,
                 prices: filteredIndices.map((i) => t.prices[i]),
-                floor_areas: filteredIndices.map((i) => t.floor_areas[i]),
-                storey_ranges: filteredIndices.map((i) => t.storey_ranges[i]),
+                floor_area_sqm: filteredIndices.map((i) => t.floor_area_sqm[i]),
+                storey_range: filteredIndices.map((i) => t.storey_range[i]),
                 avgPrice: Number(
                   (
                     filteredIndices.reduce((sum, i) => sum + t.prices[i], 0) /
@@ -134,13 +141,37 @@ export async function GET(req: Request) {
 
         if (trendsInRange.length === 0) continue;
         const latestTrend = trendsInRange[trendsInRange.length - 1];
+
+        // Ensure floor_area_sqm is an array before calculating average
+        const floorAreaArray = Array.isArray(latestTrend.floor_area_sqm)
+          ? latestTrend.floor_area_sqm
+          : [latestTrend.floor_area_sqm];
+
+        // Ensure storey_range is an array
+        const storeyRangeArray = Array.isArray(latestTrend.storey_range)
+          ? latestTrend.storey_range
+          : [latestTrend.storey_range];
+
+        // Ensure remaining_lease_years is an array
+        const leaseArray = Array.isArray(latestTrend.remaining_lease_years)
+          ? latestTrend.remaining_lease_years
+          : [latestTrend.remaining_lease_years];
+
         filtered.push({
           ...prop,
           price: latestTrend.avgPrice,
           date: latestTrend.date,
-          floor_area_sqm: latestTrend.floor_area_sqm,
-          storey_range: latestTrend.storey_range,
-          remaining_lease_years: latestTrend.remaining_lease_years,
+          floor_area_sqm: Number(
+            (
+              floorAreaArray.reduce((sum, a) => sum + a, 0) /
+              floorAreaArray.length
+            ).toFixed(2)
+          ),
+          storey_range:
+            storeyRangeArray.length > 0
+              ? storeyRangeArray[storeyRangeArray.length - 1]
+              : "",
+          remaining_lease_years: leaseArray[0] || "",
           trend: trendsInRange,
         });
       }
@@ -228,7 +259,7 @@ export async function GET(req: Request) {
       { status: 500 }
     );
 
-    // Ensure browsers/CDNs don’t cache this
+    // Ensure browsers/CDNs don't cache this
     errorResponse.headers.set("Cache-Control", "no-store, max-age=0");
     return errorResponse;
   }

@@ -75,15 +75,33 @@ export function PropertyCard({ property }: { property: Property }) {
   };
 
   const exportToExcel = () => {
-    const exportData = property.trend.map((t) => ({
-      Town: toTitleCase(property.town),
-      "Flat Type": toTitleCase(property.flatType),
-      Month: t.date,
-      "Average Price": t.avgPrice,
-      "Floor Area (sqm)": t.floor_area_sqm,
-      "Remaining Lease": t.remaining_lease_years,
-      "Storey Range": t.storey_range,
-    }));
+    const exportData = property.trend.map((t) => {
+      // Calculate averages from arrays
+      const avgFloorArea = Array.isArray(t.floor_area_sqm)
+        ? (
+            t.floor_area_sqm.reduce((sum, a) => sum + a, 0) /
+            t.floor_area_sqm.length
+          ).toFixed(2)
+        : t.floor_area_sqm;
+
+      const remainingLease = Array.isArray(t.remaining_lease_years)
+        ? t.remaining_lease_years[0] || ""
+        : t.remaining_lease_years;
+
+      const storeyRange = Array.isArray(t.storey_range)
+        ? t.storey_range[t.storey_range.length - 1] || ""
+        : t.storey_range;
+
+      return {
+        Town: toTitleCase(property.town),
+        "Flat Type": toTitleCase(property.flatType),
+        Month: t.date,
+        "Average Price": t.avgPrice,
+        "Floor Area (sqm)": avgFloorArea,
+        "Remaining Lease": remainingLease,
+        "Storey Range": storeyRange,
+      };
+    });
 
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(exportData);

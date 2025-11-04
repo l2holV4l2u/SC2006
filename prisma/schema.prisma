@@ -7,7 +7,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ---------------- USERS & AUTH ----------------
 model User {
   id                 String   @id @default(uuid())
   email              String   @unique

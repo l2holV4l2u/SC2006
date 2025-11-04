@@ -104,23 +104,32 @@ export async function buildCache() {
           data.remainingLeaseYears.reduce((a: number, b: number) => a + b, 0) /
           data.remainingLeaseYears.length;
 
+        const avgPrice =
+          data.prices.reduce((a: number, b: number) => a + b, 0) /
+          data.prices.length;
+
         return {
           date: month,
+          // Individual data points (arrays)
           prices: data.prices,
-          floor_areas: data.floorAreas,
-          storey_ranges: data.storeyRanges,
-          avgPrice:
-            data.prices.reduce((a: number, b: number) => a + b, 0) /
-            data.prices.length,
-          floor_area_sqm:
-            data.floorAreas.reduce((a: number, b: number) => a + b, 0) /
-            data.floorAreas.length,
-          storey_range: getMostCommonStoreyRange(data.storeyRanges),
-          remaining_lease_years: formatRemainingLease(avgLease),
+          floor_area: data.floorAreas, // Kept for compatibility
+          floor_area_sqm: data.floorAreas, // This should be an array based on type
+          storey_range: data.storeyRanges, // This should be an array based on type
+          remaining_lease_years: data.storeyRanges.map(() =>
+            formatRemainingLease(avgLease)
+          ), // Array of lease strings
+          // Aggregated values
+          avgPrice: avgPrice,
         };
       });
 
     const latestMonth = trend.at(-1)!;
+
+    // Calculate aggregated values for the property
+    const avgFloorArea =
+      latestMonth.floor_area_sqm.reduce((a: number, b: number) => a + b, 0) /
+      latestMonth.floor_area_sqm.length;
+
     cacheMap[key] = [
       {
         id: idCounter++,
@@ -130,9 +139,9 @@ export async function buildCache() {
         date: latestMonth.date,
         price: latestMonth.avgPrice,
         trend,
-        floor_area_sqm: latestMonth.floor_area_sqm,
-        storey_range: latestMonth.storey_range,
-        remaining_lease_years: latestMonth.remaining_lease_years,
+        floor_area_sqm: avgFloorArea,
+        storey_range: getMostCommonStoreyRange(latestMonth.storey_range),
+        remaining_lease_years: latestMonth.remaining_lease_years[0] || "", // Use first or empty string
       },
     ];
   }

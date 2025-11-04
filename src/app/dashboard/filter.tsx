@@ -71,8 +71,6 @@ export function FilterSection() {
   const [filterName, setFilterName] = useState("");
   const [isSavingFilter, setIsSavingFilter] = useState(false);
 
-  useEffect(() => setFilters(filters), [filters]);
-
   // Fetch properties only when pagination changes (not on filter changes)
   useEffect(() => {
     fetchProperties();
@@ -158,10 +156,32 @@ export function FilterSection() {
   const fetchProperties = async () => {
     setLoading(true);
     try {
+      // Construct monthFrom and monthTo in YYYY-MM format
+      const monthFrom =
+        filters.yearFrom && filters.monthFrom
+          ? `${filters.yearFrom}-${filters.monthFrom}`
+          : undefined;
+
+      const monthTo =
+        filters.yearTo && filters.monthTo
+          ? `${filters.yearTo}-${filters.monthTo}`
+          : undefined;
+
       const params = new URLSearchParams({
-        ...Object.fromEntries(Object.entries(filters).filter(([_, v]) => v)),
+        ...Object.fromEntries(
+          Object.entries({
+            town: filters.town,
+            flatType: filters.flatType,
+            sortBy: filters.sortBy,
+            minArea: filters.minArea,
+            maxArea: filters.maxArea,
+            minStorey: filters.minStorey,
+            maxStorey: filters.maxStorey,
+            ...(monthFrom && { monthFrom }),
+            ...(monthTo && { monthTo }),
+          }).filter(([_, v]) => v)
+        ),
         page: pagination.page.toString(),
-        itemsPerPage: "9",
       });
       const res = await fetch(`/api/dataset?${params.toString()}`);
       const data = await res.json();
