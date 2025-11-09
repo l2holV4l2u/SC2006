@@ -186,7 +186,7 @@ export async function getCache(): Promise<Record<string, Property[]>> {
       console.log(`Cache expired (age: ${ageHours} hrs)`);
     }
   } else {
-    console.log(`🆕 No cache found`);
+    console.log(`No cache found`);
   }
 
   // Build new cache

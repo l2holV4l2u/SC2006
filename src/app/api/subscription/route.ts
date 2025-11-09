@@ -16,12 +16,18 @@ export async function POST(req: NextRequest) {
   // Decode the JWT to get user info
   let token;
   try {
+    // Use the correct salt based on which cookie exists
+    const cookieName = req.cookies.get("__Secure-authjs.session-token")
+      ? "__Secure-authjs.session-token"
+      : "authjs.session-token";
+
     token = await decode({
       token: sessionToken,
       secret: process.env.NEXTAUTH_SECRET!,
-      salt: "__Secure-authjs.session-token",
+      salt: cookieName,
     });
   } catch (error) {
+    console.error("Token decode error:", error);
     return NextResponse.json({ error: "Invalid token" }, { status: 401 });
   }
 

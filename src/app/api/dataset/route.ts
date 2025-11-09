@@ -10,10 +10,7 @@ function storeyInRange(
   minStorey: number | null,
   maxStorey: number | null
 ): boolean {
-  // If no storey filters are applied, include everything
   if (minStorey === null && maxStorey === null) return true;
-
-  // If storey filters are applied but no storey range data exists, exclude it
   if (!storeyRange) return false;
 
   const match = storeyRange.match(/(\d+)\s+TO\s+(\d+)/i);
@@ -22,8 +19,6 @@ function storeyInRange(
   const rangeMin = parseInt(match[1]);
   const rangeMax = parseInt(match[2]);
 
-  // Check if the entire range is within the filter bounds
-  // Both rangeMin and rangeMax must be within minStorey and maxStorey
   if (minStorey !== null && rangeMin < minStorey) return false;
   if (maxStorey !== null && rangeMax > maxStorey) return false;
 
@@ -49,8 +44,8 @@ export async function GET(req: Request) {
     const itemsPerPage = parseInt(searchParams.get("itemsPerPage") || "9");
 
     // Advanced filters
-    const monthFrom = searchParams.get("monthFrom"); // YYYY-MM
-    const monthTo = searchParams.get("monthTo"); // YYYY-MM
+    const monthFrom = searchParams.get("monthFrom");
+    const monthTo = searchParams.get("monthTo");
     const minArea = searchParams.get("minArea")
       ? parseFloat(searchParams.get("minArea")!)
       : null;
@@ -64,7 +59,6 @@ export async function GET(req: Request) {
       ? parseInt(searchParams.get("maxStorey")!)
       : null;
 
-    // Special flag to return all data for fairness calculations
     const returnAll = searchParams.get("all") === "true";
     const cache = await getCache();
 
@@ -78,7 +72,6 @@ export async function GET(req: Request) {
         if (townFilter && town !== townFilter) continue;
         if (flatTypeFilter && flatType !== flatTypeFilter) continue;
 
-        // Month range filter - filters trend data based on all criteria
         let trendsInRange = prop.trend;
         const from = monthFrom ? parse(monthFrom, "yyyy-MM", new Date()) : null;
         const to = monthTo ? parse(monthTo, "yyyy-MM", new Date()) : null;
@@ -96,7 +89,6 @@ export async function GET(req: Request) {
             ) {
               const filteredIndices: number[] = [];
 
-              // Ensure floor_area_sqm is an array
               const floorAreas = Array.isArray(t.floor_area_sqm)
                 ? t.floor_area_sqm
                 : [];
@@ -118,10 +110,6 @@ export async function GET(req: Request) {
 
               if (filteredIndices.length === 0) return null;
 
-              // Calculate average remaining lease years from filtered indices
-              // Note: We don't have individual lease years in the trend, so we keep the aggregate
-
-              // Return filtered trend data
               return {
                 ...t,
                 prices: filteredIndices.map((i) => t.prices[i]),
@@ -142,17 +130,14 @@ export async function GET(req: Request) {
         if (trendsInRange.length === 0) continue;
         const latestTrend = trendsInRange[trendsInRange.length - 1];
 
-        // Ensure floor_area_sqm is an array before calculating average
         const floorAreaArray = Array.isArray(latestTrend.floor_area_sqm)
           ? latestTrend.floor_area_sqm
           : [latestTrend.floor_area_sqm];
 
-        // Ensure storey_range is an array
         const storeyRangeArray = Array.isArray(latestTrend.storey_range)
           ? latestTrend.storey_range
           : [latestTrend.storey_range];
 
-        // Ensure remaining_lease_years is an array
         const leaseArray = Array.isArray(latestTrend.remaining_lease_years)
           ? latestTrend.remaining_lease_years
           : [latestTrend.remaining_lease_years];
@@ -190,7 +175,6 @@ export async function GET(req: Request) {
         });
       });
 
-      // Remove properties with no remaining trend data
       for (let i = filtered.length - 1; i >= 0; i--) {
         if (filtered[i].trend.length === 0) filtered.splice(i, 1);
       }
@@ -221,7 +205,6 @@ export async function GET(req: Request) {
         return bYears - aYears;
       });
 
-    // If requesting all data (for fairness calculations)
     if (returnAll) {
       const response = NextResponse.json({
         data: filtered,
@@ -231,6 +214,7 @@ export async function GET(req: Request) {
         "Cache-Control",
         "public, max-age=86400, stale-while-revalidate=3600"
       );
+      response.headers.set("Vary", "Cookie");
       return response;
     }
 
@@ -249,17 +233,16 @@ export async function GET(req: Request) {
       "Cache-Control",
       "public, max-age=86400, stale-while-revalidate=3600"
     );
+    response.headers.set("Vary", "Cookie");
     return response;
   } catch (err) {
     console.error("Dataset fetch error:", err);
 
-    // Do NOT set cache headers here
     const errorResponse = NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
     );
 
-    // Ensure browsers/CDNs don't cache this
     errorResponse.headers.set("Cache-Control", "no-store, max-age=0");
     return errorResponse;
   }

@@ -686,37 +686,42 @@ export function FilterSection() {
                     </div>
                   </div>
 
-                  <div className="flex justify-between text-sm">
-                    <div className="text-gray-600">Transaction Period:</div>
-                    <div className="font-medium text-gray-900">
-                      {filters.yearFrom || filters.monthFrom
-                        ? `${
-                            months.find((m) => m.value === filters.monthFrom)
-                              ?.label || ""
-                          } ${filters.yearFrom || ""}`
-                        : "Any"}
-                      {filters.yearTo || filters.monthTo
-                        ? ` - ${
-                            months.find((m) => m.value === filters.monthTo)
-                              ?.label || ""
-                          } ${filters.yearTo || ""}`
-                        : ""}
-                    </div>
-                  </div>
+                  {isPremium && (
+                    <>
+                      <div className="flex justify-between text-sm">
+                        <div className="text-gray-600">Transaction Period:</div>
+                        <div className="font-medium text-gray-900">
+                          {filters.yearFrom || filters.monthFrom
+                            ? `${
+                                months.find(
+                                  (m) => m.value === filters.monthFrom
+                                )?.label || ""
+                              } ${filters.yearFrom || ""}`
+                            : "Any"}
+                          {filters.yearTo || filters.monthTo
+                            ? ` - ${
+                                months.find((m) => m.value === filters.monthTo)
+                                  ?.label || ""
+                              } ${filters.yearTo || ""}`
+                            : ""}
+                        </div>
+                      </div>
 
-                  <div className="flex justify-between text-sm">
-                    <div className="text-gray-600">Floor Area:</div>
-                    <div className="font-medium text-gray-900">
-                      {filters.minArea} - {filters.maxArea} sqm
-                    </div>
-                  </div>
+                      <div className="flex justify-between text-sm">
+                        <div className="text-gray-600">Floor Area:</div>
+                        <div className="font-medium text-gray-900">
+                          {filters.minArea} - {filters.maxArea} sqm
+                        </div>
+                      </div>
 
-                  <div className="flex justify-between text-sm">
-                    <div className="text-gray-600">Storey Range:</div>
-                    <div className="font-medium text-gray-900">
-                      Level {filters.minStorey} - {filters.maxStorey}
-                    </div>
-                  </div>
+                      <div className="flex justify-between text-sm">
+                        <div className="text-gray-600">Storey Range:</div>
+                        <div className="font-medium text-gray-900">
+                          Level {filters.minStorey} - {filters.maxStorey}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 

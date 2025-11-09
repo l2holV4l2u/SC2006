@@ -197,10 +197,25 @@ export function DashboardNavbar({
   }, [session, setSavedFilters]);
 
   const handleSelectFilter = (selectedFilters: Filters, filterName: string) => {
-    setFilters(selectedFilters);
+    // If user is not premium, reset advanced filters to defaults
+    const filtersToApply = isPremium
+      ? selectedFilters
+      : {
+          ...selectedFilters,
+          yearFrom: "",
+          yearTo: "",
+          monthFrom: "",
+          monthTo: "",
+          minArea: "1",
+          maxArea: "250",
+          minStorey: "1",
+          maxStorey: "50",
+        };
+
+    setFilters(filtersToApply);
     setOpenSavedFilters(false);
     setDialogMode("view");
-    setAskingPrice(selectedFilters.askingPrice || "0");
+    setAskingPrice(filtersToApply.askingPrice || "0");
     toast.success("Filter applied!");
   };
 
@@ -340,30 +355,35 @@ export function DashboardNavbar({
         label: filters.flatType,
       });
     }
-    if (
-      filters.monthFrom ||
-      filters.monthTo ||
-      filters.yearFrom ||
-      filters.yearTo
-    ) {
-      const from = [filters.monthFrom, filters.yearFrom]
-        .filter(Boolean)
-        .join(" ");
-      const to = [filters.monthTo, filters.yearTo].filter(Boolean).join(" ");
-      const dateRange = [from, to].filter(Boolean).join(" - ");
-      items.push({ icon: <Calendar className="h-3 w-3" />, label: dateRange });
-    }
-    if (filters.minArea || filters.maxArea) {
-      items.push({
-        icon: <Maximize2 className="h-3 w-3" />,
-        label: `${filters.minArea || 0}-${filters.maxArea || "∞"} sqm`,
-      });
-    }
-    if (filters.minStorey || filters.maxStorey) {
-      items.push({
-        icon: <Layers className="h-3 w-3" />,
-        label: `Lvl ${filters.minStorey || 1}-${filters.maxStorey || "∞"}`,
-      });
+    if (isPremium) {
+      if (
+        filters.monthFrom ||
+        filters.monthTo ||
+        filters.yearFrom ||
+        filters.yearTo
+      ) {
+        const from = [filters.monthFrom, filters.yearFrom]
+          .filter(Boolean)
+          .join(" ");
+        const to = [filters.monthTo, filters.yearTo].filter(Boolean).join(" ");
+        const dateRange = [from, to].filter(Boolean).join(" - ");
+        items.push({
+          icon: <Calendar className="h-3 w-3" />,
+          label: dateRange,
+        });
+      }
+      if (filters.minArea || filters.maxArea) {
+        items.push({
+          icon: <Maximize2 className="h-3 w-3" />,
+          label: `${filters.minArea || 0}-${filters.maxArea || "∞"} sqm`,
+        });
+      }
+      if (filters.minStorey || filters.maxStorey) {
+        items.push({
+          icon: <Layers className="h-3 w-3" />,
+          label: `Lvl ${filters.minStorey || 1}-${filters.maxStorey || "∞"}`,
+        });
+      }
     }
 
     return items;
